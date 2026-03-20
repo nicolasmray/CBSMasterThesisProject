@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+.env
+schema_snapshot.json
+*.egg-info/
+dist/
+build/
+.venv/
