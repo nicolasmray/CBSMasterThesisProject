@@ -73,7 +73,43 @@ if user_input:
                 })
 
             except Exception as e:
-                error_msg = f"An error occurred: {e}"
+                # Unwrap nested exceptions (TaskGroup, ExceptionGroup) to surface the real error
+                root_cause = e
+                while hasattr(root_cause, 'exceptions') and root_cause.exceptions:
+                    root_cause = root_cause.exceptions[0]
+                while root_cause.__cause__:
+                    root_cause = root_cause.__cause__
+
+                error_type = type(root_cause).__name__
+                error_detail = str(root_cause)
+
+                # Provide user-friendly messages for common errors
+                if "rate_limit" in error_detail.lower() or "429" in error_detail:
+                    error_msg = (
+                        "**Rate limit reached on the Groq API.** "
+                        "You've exceeded the free-tier request limit. "
+                        "Wait a minute and try again, or upgrade your Groq plan."
+                    )
+                elif "authentication" in error_detail.lower() or "401" in error_detail or "invalid api key" in error_detail.lower():
+                    error_msg = (
+                        "**Groq API authentication failed.** "
+                        "Check that your `GROQ_API_KEY` in `.env` is correct and active."
+                    )
+                elif "quota" in error_detail.lower() or "insufficient" in error_detail.lower():
+                    error_msg = (
+                        "**Groq API quota exceeded.** "
+                        "You've used all available tokens/requests. "
+                        "Wait or upgrade your Groq plan."
+                    )
+                elif "connection" in error_detail.lower() or "timeout" in error_detail.lower():
+                    error_msg = (
+                        "**Connection error.** "
+                        "Could not reach the Groq API or the database. "
+                        "Check your internet connection and that PostgreSQL is running."
+                    )
+                else:
+                    error_msg = f"**Error ({error_type}):** {error_detail}"
+
                 st.error(error_msg)
                 st.session_state.messages.append({
                     "role": "assistant",

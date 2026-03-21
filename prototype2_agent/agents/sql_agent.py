@@ -7,33 +7,44 @@ back to semantic_search for extra context on failure.
 
 import asyncio
 import json
-import os
 
 import sqlglot
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
 from state import AgentState
 from mcp_client import get_server_params, call_tool
-
-load_dotenv()
+from llm_config import get_llm
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SQL_SYSTEM_PROMPT = """\
 You are a SQL specialist agent for a PostgreSQL database.
 
 You will be given:
-- A database schema snapshot (table names, column names, data types).
+- A database schema snapshot with two sections:
+  1. "tables": table names, column names, and data types.
+  2. "foreign_keys": relationships between tables showing which columns reference which.
 - The user's question.
 - Optionally, extra documentation context from a knowledge base.
 
 Your job:
 1. Write a single, correct PostgreSQL SQL query that answers the user's question.
 2. Use ONLY tables and columns that appear in the schema snapshot.
-3. Return ONLY the raw SQL query — no markdown fences, no explanation.
+3. Tables are listed as "schema.table" (e.g. "production.product", "sales.salesorderdetail").
+   You MUST use fully-qualified names (schema.table) in your SQL.
+4. Use the foreign_keys section to determine correct JOIN conditions between tables.
+5. When no formal foreign key exists, infer joins by matching ID columns:
+   - Columns like "personid", "storeid", "employeeid" often reference the primary key
+     ("businessentityid") of their corresponding table (person.person, sales.store,
+     humanresources.employee). In this database, "businessentityid" is the universal
+     primary key for people, stores, vendors, and employees.
+   - Example: sales.customer.personid → person.person.businessentityid
+   - Example: purchasing.purchaseorderheader.employeeid → humanresources.employee.businessentityid
+6. When the user asks for names, labels, or descriptions, always JOIN to the table that
+   contains that human-readable text — do not return just IDs. For customer names,
+   join through person.person to get firstname and lastname.
+7. Return ONLY the raw SQL query — no markdown fences, no explanation.
 """
 
 SQL_RETRY_PROMPT = """\
@@ -56,6 +67,9 @@ Write a corrected PostgreSQL SQL query. Return ONLY the raw SQL.
 def _validate_sql(sql: str) -> str:
     """Parse and transpile SQL to PostgreSQL dialect using sqlglot.
 
+    Tries parsing as generic SQL first, then falls back to TSQL dialect
+    (handles cases where the LLM generates SQL Server syntax like SELECT TOP N).
+
     Args:
         sql: Raw SQL string.
 
@@ -63,8 +77,15 @@ def _validate_sql(sql: str) -> str:
         Transpiled SQL string in Postgres dialect.
 
     Raises:
-        sqlglot.errors.ParseError: If the SQL is syntactically invalid.
+        sqlglot.errors.ParseError: If the SQL is syntactically invalid in all dialects.
     """
+    for source_dialect in (None, "tsql"):
+        try:
+            parsed = sqlglot.parse_one(sql, dialect=source_dialect)
+            return parsed.sql(dialect="postgres")
+        except sqlglot.errors.ParseError:
+            continue
+    # If all dialects fail, raise the error from the default parser
     parsed = sqlglot.parse_one(sql)
     return parsed.sql(dialect="postgres")
 
@@ -84,11 +105,7 @@ async def _run_sql(state: AgentState) -> AgentState:
             schema = await call_tool(session, "get_schema_snapshot", {})
             schema_str = json.dumps(schema, indent=2) if schema else "No schema available."
 
-            llm = ChatGroq(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                api_key=os.getenv("GROQ_API_KEY"),
-                temperature=0,
-            )
+            llm = get_llm("sql")
 
             # Initial SQL generation
             messages = [
@@ -217,10 +234,19 @@ async def _run_sql(state: AgentState) -> AgentState:
                         raw_sql = raw_sql[3:].strip()
                     continue
 
-                # Success
+                # Success — normalize result to always be a list of dicts.
+                # Single-row queries return a dict from MCP (1 content block),
+                # multi-row queries return a list (N content blocks).
+                if isinstance(result, dict):
+                    sql_result = [result]
+                elif isinstance(result, list):
+                    sql_result = result
+                else:
+                    sql_result = []
+
                 return {
                     "sql_query": validated_sql,
-                    "sql_result": result if isinstance(result, list) else [],
+                    "sql_result": sql_result,
                     "error": "",
                     "retry_count": retry_count,
                     "schema_context": schema_str,

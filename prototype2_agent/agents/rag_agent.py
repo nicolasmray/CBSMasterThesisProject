@@ -5,17 +5,13 @@ via the MCP server's semantic_search tool.
 """
 
 import asyncio
-import os
 
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from mcp.client.stdio import stdio_client
 
 from state import AgentState
 from mcp_client import get_server_params, call_tool
-
-load_dotenv()
+from llm_config import get_llm
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 RAG_SYSTEM_PROMPT = """\
@@ -52,11 +48,7 @@ async def _run_rag(state: AgentState) -> AgentState:
         rag_context = "No relevant documents found."
 
     # Ask the LLM to synthesize an answer from the context
-    llm = ChatGroq(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0,
-    )
+    llm = get_llm("rag")
 
     messages = [
         SystemMessage(content=RAG_SYSTEM_PROMPT),

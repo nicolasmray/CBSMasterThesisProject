@@ -5,18 +5,13 @@ then generates the chart using Plotly. No MCP tools needed.
 """
 
 import base64
-import io
 import json
-import os
 
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 import plotly.graph_objects as go
 
 from state import AgentState
-
-load_dotenv()
+from llm_config import get_llm
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 CHART_SYSTEM_PROMPT = """\
@@ -104,11 +99,7 @@ def chart_agent(state: AgentState) -> AgentState:
         }
 
     # Ask the LLM to decide chart parameters
-    llm = ChatGroq(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0,
-    )
+    llm = get_llm("chart")
 
     # Show a sample of the data (first 5 rows) to keep token usage low
     sample = sql_result[:5]
