@@ -5,6 +5,7 @@ via the MCP server's semantic_search tool.
 """
 
 import asyncio
+import concurrent.futures
 import os
 
 from dotenv import load_dotenv
@@ -99,4 +100,5 @@ def rag_agent(state: AgentState) -> AgentState:
     Returns:
         Partial AgentState update with rag_context.
     """
-    return asyncio.run(_run_rag(state))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, _run_rag(state)).result()

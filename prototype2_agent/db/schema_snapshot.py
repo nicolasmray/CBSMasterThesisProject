@@ -19,10 +19,10 @@ def capture_schema_snapshot() -> dict:
     engine = get_engine()
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT table_name, column_name, data_type
+            SELECT table_schema || '.' || table_name AS table_name, column_name, data_type
             FROM information_schema.columns
-            WHERE table_schema = 'public'
-            ORDER BY table_name, ordinal_position
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            ORDER BY table_schema, table_name, ordinal_position
         """)).fetchall()
 
     schema: dict[str, list[dict]] = {}

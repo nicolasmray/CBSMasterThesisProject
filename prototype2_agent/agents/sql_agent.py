@@ -6,6 +6,7 @@ back to semantic_search for extra context on failure.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 
@@ -80,9 +81,21 @@ async def _run_sql(state: AgentState) -> AgentState:
         async with _mcp_session(read_stream, write_stream) as session:
             await session.initialize()
 
-            # Fetch schema snapshot via MCP
+            # Fetch schema snapshot via MCP and format compactly.
+            # json.dumps(indent=2) of a large schema (e.g. AdventureWorks) can
+            # exceed 30 000 tokens — the Groq TPM limit for this model.
+            # Compact format "schema.table: col(type), ..." cuts that by ~70%.
             schema = await call_tool(session, "get_schema_snapshot", {})
-            schema_str = json.dumps(schema, indent=2) if schema else "No schema available."
+            if schema:
+                lines = []
+                for table, cols in schema.items():
+                    col_defs = ", ".join(
+                        f"{c['column_name']}({c['data_type']})" for c in cols
+                    )
+                    lines.append(f"{table}: {col_defs}")
+                schema_str = "\n".join(lines)
+            else:
+                schema_str = "No schema available."
 
             llm = ChatGroq(
                 model="meta-llama/llama-4-scout-17b-16e-instruct",
@@ -184,7 +197,50 @@ async def _run_sql(state: AgentState) -> AgentState:
                         raw_sql = raw_sql[3:].strip()
                     continue
 
-                # Check for empty result
+                # Normalise result to list[dict].
+                # FastMCP returns a bare dict for single-row results instead of
+                # a one-element list.  Wrap valid dicts; treat dicts with an
+                # "error" key as DB-level errors and retry.
+                if isinstance(result, dict):
+                    if "error" not in result:
+                        result = [result]  # single-row result — wrap and continue
+                if result is not None and not isinstance(result, list):
+                    if isinstance(result, dict) and "error" in result:
+                        error_info = f"Database error: {result['error']}"
+                    else:
+                        error_info = f"Unexpected result from database: {result!r:.200}"
+                    retry_count += 1
+                    if retry_count >= 3:
+                        return {
+                            "sql_query": validated_sql,
+                            "sql_result": [],
+                            "error": error_info,
+                            "retry_count": retry_count,
+                            "schema_context": schema_str,
+                        }
+                    extra = await call_tool(
+                        session,
+                        "semantic_search",
+                        {"query": user_query, "top_k": 3},
+                    )
+                    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
+                    retry_msg = SQL_RETRY_PROMPT.format(
+                        error_info=error_info,
+                        extra_context=extra_ctx,
+                        schema=schema_str,
+                        question=user_query,
+                    )
+                    messages = [
+                        SystemMessage(content=SQL_SYSTEM_PROMPT),
+                        HumanMessage(content=retry_msg),
+                    ]
+                    response = llm.invoke(messages)
+                    raw_sql = response.content.strip().strip("`").strip()
+                    if raw_sql.lower().startswith("sql"):
+                        raw_sql = raw_sql[3:].strip()
+                    continue
+
+                # Check for genuinely empty result (valid query, zero rows)
                 if not result:
                     retry_count += 1
                     if retry_count >= 3:
@@ -217,10 +273,10 @@ async def _run_sql(state: AgentState) -> AgentState:
                         raw_sql = raw_sql[3:].strip()
                     continue
 
-                # Success
+                # Success — result is a non-empty list of row dicts
                 return {
                     "sql_query": validated_sql,
-                    "sql_result": result if isinstance(result, list) else [],
+                    "sql_result": result,
                     "error": "",
                     "retry_count": retry_count,
                     "schema_context": schema_str,
@@ -262,4 +318,9 @@ def sql_agent(state: AgentState) -> AgentState:
     Returns:
         Partial AgentState update with sql_query, sql_result, error, retry_count, schema_context.
     """
-    return asyncio.run(_run_sql(state))
+    # Run in a dedicated thread so asyncio.run() creates a completely fresh
+    # event loop, isolated from Streamlit's own loop.  This avoids the
+    # "unhandled errors in a TaskGroup" error on Windows without patching
+    # the global event loop (which causes shutdown hangs with nest_asyncio).
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, _run_sql(state)).result()

@@ -7,3 +7,4 @@ schema_snapshot.json
 dist/
 build/
 .venv/
+.claude
