@@ -72,13 +72,9 @@ def _render_assistant_turn(
     # 2. Raw data table — shown only when the DB returned rows
     if sql_result:
         with st.expander(
-            f"Query Results — {len(sql_result)} row(s) direct from database",
-            expanded=True,
+            f"Raw Query Results — {len(sql_result)} rows:",
+            expanded=False,
         ):
-            st.info(
-                "These are the **raw values returned by the database**. "
-                "Every number in the answer above should match this table."
-            )
             st.dataframe(sql_result, use_container_width=True)
 
     # 3. SQL query — collapsed by default to keep the chat clean

@@ -36,7 +36,6 @@ instead of returning a useless "context is insufficient" message.
 
 from __future__ import annotations
 
-import json
 import os
 
 from dotenv import load_dotenv
@@ -48,6 +47,40 @@ from state import AgentState
 load_dotenv()
 
 
+def _fmt_value(v) -> str:
+    """Format a cell value: round floats to 2 dp with thousands separator."""
+    try:
+        f = float(v)
+        if f == int(f):
+            return f"{int(f):,}"
+        return f"{f:,.2f}"
+    except (TypeError, ValueError):
+        return str(v) if v is not None else ""
+
+
+
+def _format_rows(rows: list[dict]) -> str:
+    """Format query rows for display in the final answer.
+
+    - 1 row, 1 col  → plain scalar value
+    - 2+ cols        → "Label: $value" per line (first col = label, second = metric)
+    """
+    if not rows:
+        return "(no rows)"
+    cols = list(rows[0].keys())
+
+    # Single scalar
+    if len(rows) == 1 and len(cols) == 1:
+        return _fmt_value(next(iter(rows[0].values())))
+
+    # Two-column: label → metric list
+    if len(cols) == 2:
+        label_col, value_col = cols[0], cols[1]
+        return "\n\n".join(
+            f"{r.get(label_col)}: `{_fmt_value(r.get(value_col))}`"
+            for r in rows
+        )
+    
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
 INTERPRETATION_PROMPT = """\
@@ -143,8 +176,8 @@ def response_agent(state: AgentState) -> AgentState:
     if sql_result:
         # Part 1 — raw results serialised directly, no LLM involved
         facts_block = (
-            f"Query returned {len(sql_result)} row(s):\n"
-            + json.dumps(sql_result[:20], indent=2, default=str)
+            f"Query returned {len(sql_result)} row(s):\n\n"
+            + _format_rows(sql_result[:20])
         )
 
         # Part 2 — LLM interpretation
@@ -169,7 +202,7 @@ def response_agent(state: AgentState) -> AgentState:
             HumanMessage(content=interpretation_ctx),
         ]).content.strip()
 
-        final = f"{facts_block}\n\n---\n\n{insight}"
+        final = f"{facts_block}\n\n**Key Insights:** {insight}"
         return {"final_answer": final}
 
     # ── Path B: SQL ran but returned no rows ──────────────────────────────────

@@ -1,6 +1,6 @@
 # Improvements & Architecture Comparison
 
----
+-----21.3.2026------
 
 ## Why `thesisProject_langChain` gets correct numbers
 
@@ -125,6 +125,16 @@ giving the LLM latitude to invent or round values.
 - **ThreadPoolExecutor** — same fix as `sql_agent.py`; async MCP calls run in
   a dedicated thread to avoid event loop conflicts with Streamlit
 
+------23.3.2026---------
+
+### Fix: Multi-row query results now returned in full (`mcp_client.py`)
+- **Problem:** Queries returning multiple rows (e.g. sales per category) only showed the first row.
+- **Root cause:** FastMCP serializes each dict in a `list[dict]` return as a separate MCP content block. `call_tool` only read `content[0]`, discarding all subsequent rows.
+- **Fix:** `call_tool` now iterates over all content blocks and assembles them into a list, so all rows are returned correctly.
+
+### Fix: Clean result display instead of raw JSON (`response_agent.py`)
+- **Problem:** Results were displayed as raw JSON, e.g. `Query returned 1 row(s): [ { "count": 19820 } ]`.
+- **Fix:** Added `_format_rows` helper that formats results as a plain number for single-value results (e.g. `19820`) or a plain-text `|`-separated table for multi-row/multi-column results.
 
 
 

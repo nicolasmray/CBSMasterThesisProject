@@ -40,12 +40,23 @@ async def call_tool(session: ClientSession, tool_name: str, args: dict) -> any:
     result = await session.call_tool(tool_name, arguments=args)
 
     # The MCP SDK returns content blocks; extract the text payload.
+    # FastMCP may serialize a list[dict] as multiple content blocks (one per row),
+    # so we must collect ALL blocks, not just the first one.
     if result.content and len(result.content) > 0:
-        text = result.content[0].text
-        try:
-            return json.loads(text)
-        except (json.JSONDecodeError, TypeError):
-            return text
+        if len(result.content) == 1:
+            text = result.content[0].text
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                return text
+        else:
+            items = []
+            for block in result.content:
+                try:
+                    items.append(json.loads(block.text))
+                except (json.JSONDecodeError, TypeError):
+                    items.append(block.text)
+            return items
     return None
 
 
