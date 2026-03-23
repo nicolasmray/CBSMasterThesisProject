@@ -4,15 +4,10 @@ Interprets the user query, classifies intent, and writes a high-level plan.
 Does NOT call any MCP tools — it purely routes.
 """
 
-import os
-
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from state import AgentState
-
-load_dotenv()
+from llm_config import get_llm
 
 # ── System prompt (easy to tune) ──────────────────────────────────────────────
 ORCHESTRATOR_SYSTEM_PROMPT = """\
@@ -41,11 +36,7 @@ def orchestrator_agent(state: AgentState) -> AgentState:
     Returns:
         Partial AgentState update with intent and plan.
     """
-    llm = ChatGroq(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0,
-    )
+    llm = get_llm("orchestrator")
 
     messages = [
         SystemMessage(content=ORCHESTRATOR_SYSTEM_PROMPT),
