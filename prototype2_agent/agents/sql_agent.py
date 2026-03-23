@@ -290,26 +290,10 @@ async def _run_sql(state: AgentState) -> AgentState:
                         raw_sql = raw_sql[3:].strip()
                     continue
 
-<<<<<<< HEAD
                 # Success — result is a non-empty list of row dicts
                 return {
                     "sql_query": validated_sql,
                     "sql_result": result,
-=======
-                # Success — normalize result to always be a list of dicts.
-                # Single-row queries return a dict from MCP (1 content block),
-                # multi-row queries return a list (N content blocks).
-                if isinstance(result, dict):
-                    sql_result = [result]
-                elif isinstance(result, list):
-                    sql_result = result
-                else:
-                    sql_result = []
-
-                return {
-                    "sql_query": validated_sql,
-                    "sql_result": sql_result,
->>>>>>> origin/main
                     "error": "",
                     "retry_count": retry_count,
                     "schema_context": schema_str,

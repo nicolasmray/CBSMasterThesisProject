@@ -5,11 +5,7 @@ via the MCP server's semantic_search tool.
 """
 
 import asyncio
-<<<<<<< HEAD
 import concurrent.futures
-import os
-=======
->>>>>>> origin/main
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from mcp.client.stdio import stdio_client

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ─── Provider: "ollama" or "groq" ────────────────────────────────────────────
-PROVIDER = "ollama"
+PROVIDER = "groq"
 
 # ─── Model settings per provider ─────────────────────────────────────────────
 OLLAMA_MODEL = "llama3.1"

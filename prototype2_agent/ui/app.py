@@ -72,7 +72,7 @@ def _render_assistant_turn(
     # 2. Raw data table — shown only when the DB returned rows
     if sql_result:
         with st.expander(
-            f"Raw Query Results — {len(sql_result)} rows:",
+            f"Raw Query Results — {len(sql_result)} rows",
             expanded=False,
         ):
             st.dataframe(sql_result, use_container_width=True)
