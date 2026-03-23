@@ -14,10 +14,10 @@ verify every number the assistant states against the actual database output.
 
 from __future__ import annotations
 
-import base64
 import os
 import sys
 
+import plotly.io as pio
 import sqlglot
 import streamlit as st
 
@@ -45,51 +45,49 @@ def _render_assistant_turn(
     final_answer: str,
     sql_query: str,
     sql_result: list[dict],
-    chart_b64: str | None,
-    chart_title: str | None,
+    chart_options: list[dict] | None,
+    turn_key: str,
 ) -> None:
     """Render all components of one assistant response inside the current chat bubble.
 
-    Render order (top → bottom):
-    1. Natural-language answer from the LLM.
-    2. Raw query results table (direct DB output — expandable, interactive).
-    3. SQL query (collapsed expander).
-    4. Chart image (when a chart was generated).
-
-    The raw data table is shown separately from the LLM answer so users can
-    instantly verify every number the assistant states against real DB values.
-
     Args:
-        final_answer: Markdown-formatted LLM answer.
-        sql_query:    Raw SQL string; empty string when no query was run.
-        sql_result:   List of row-dicts from SQL execution; empty list when none.
-        chart_b64:    Base64-encoded PNG, or ``None`` when no chart was generated.
-        chart_title:  Caption string for the chart, or ``None``.
+        final_answer:  Markdown-formatted LLM answer.
+        sql_query:     Raw SQL string; empty string when no query was run.
+        sql_result:    List of row-dicts from SQL execution; empty list when none.
+        chart_options: List of up to 3 dicts with keys figure_json, chart_type, title.
+        turn_key:      Unique key per turn to avoid widget ID collisions.
     """
     # 1. LLM answer
     st.markdown(final_answer)
 
-    # 2. Raw data table — shown only when the DB returned rows
+    # 2. Raw data table
     if sql_result:
-        with st.expander(
-            f"Raw Query Results — {len(sql_result)} rows",
-            expanded=False,
-        ):
-            st.dataframe(sql_result, use_container_width=True)
+        with st.expander(f"Raw Data — {len(sql_result)} rows", expanded=False):
+            st.dataframe(sql_result, width="stretch")
 
-    # 3. SQL query — collapsed by default to keep the chat clean
+    # 3. SQL query
     if sql_query:
         try:
             formatted_sql = sqlglot.transpile(sql_query, pretty=True)[0]
         except Exception:
             formatted_sql = sql_query
-        with st.expander("SQL Query"):
+        with st.expander("SQL Query", expanded=False):
             st.code(formatted_sql, language="sql")
 
-    # 4. Chart image
-    if chart_b64:
-        chart_bytes = base64.b64decode(chart_b64)
-        st.image(chart_bytes, caption=chart_title or "Chart")
+    # 4. Interactive chart with type selector
+    if chart_options:
+        labels = [opt["chart_type"].capitalize() for opt in chart_options]
+        with st.expander(chart_options[0]["title"], expanded=True):
+            selected = st.radio(
+                "Chart type",
+                labels,
+                horizontal=True,
+                key=f"chart_radio_{turn_key}",
+                label_visibility="collapsed",
+            )
+            idx = labels.index(selected)
+            fig = pio.from_json(chart_options[idx]["figure_json"])
+            st.plotly_chart(fig, width="stretch")
 
 
 # ── Session state ──────────────────────────────────────────────────────────────
@@ -104,8 +102,8 @@ for msg in st.session_state.messages:
                 final_answer=msg["content"],
                 sql_query=msg.get("sql_query", ""),
                 sql_result=msg.get("sql_result", []),
-                chart_b64=msg.get("chart_b64"),
-                chart_title=msg.get("chart_title"),
+                chart_options=msg.get("chart_options"),
+                turn_key=msg.get("turn_key", str(id(msg))),
             )
         else:
             st.markdown(msg["content"])
@@ -131,18 +129,15 @@ if user_input:
                 sql_result: list[dict] = result.get("sql_result", [])
                 chart_spec: dict = result.get("chart_spec", {})
 
-                chart_b64: str | None = None
-                chart_title: str | None = None
-                if chart_spec and chart_spec.get("image_base64"):
-                    chart_b64 = chart_spec["image_base64"]
-                    chart_title = chart_spec.get("title", "Chart")
+                chart_options = chart_spec.get("options") if chart_spec else None
+                turn_key = str(len(st.session_state.messages))
 
                 _render_assistant_turn(
                     final_answer=final_answer,
                     sql_query=sql_query,
                     sql_result=sql_result,
-                    chart_b64=chart_b64,
-                    chart_title=chart_title,
+                    chart_options=chart_options,
+                    turn_key=turn_key,
                 )
 
                 # Store raw data so the replay loop re-renders the table on reload
@@ -151,8 +146,8 @@ if user_input:
                     "content": final_answer,
                     "sql_query": sql_query,
                     "sql_result": sql_result,
-                    "chart_b64": chart_b64,
-                    "chart_title": chart_title,
+                    "chart_options": chart_options,
+                    "turn_key": turn_key,
                 })
 
             except Exception as e:

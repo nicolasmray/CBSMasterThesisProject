@@ -136,5 +136,29 @@ giving the LLM latitude to invent or round values.
 - **Problem:** Results were displayed as raw JSON, e.g. `Query returned 1 row(s): [ { "count": 19820 } ]`.
 - **Fix:** Added `_format_rows` helper that formats results as a plain number for single-value results (e.g. `19820`) or a plain-text `|`-separated table for multi-row/multi-column results.
 
+---
 
+------23.3.2026---------
 
+### Interactive Plotly charts with 3 chart type options (`ui/app.py`, `chart_agent.py`)
+- Replaced static PNG with interactive Plotly charts (`fig.to_json()` / `pio.from_json()`).
+- LLM ranks top 3 chart types; user picks via radio button. Options stored in `chart_spec["options"]`.
+
+### Expanded chart library (`chart_agent.py`)
+- Added: `grouped_bar`, `small_multiples`, `area`, `scatter`, `histogram`, `box`, `waterfall`, `treemap`. Removed: `funnel`.
+- System prompt updated with BA best-practice triplet recommendations per question type.
+
+### Y-axis auto-scaling (`chart_agent.py`)
+- `_compute_y_max` replaces LLM-estimated `y_max` (which was based on a 5-row sample and clipped data).
+- Waterfall: y_max covers the cumulative sum, fixing invisible intermediate bars.
+
+### Multi-year line/area charts (`chart_agent.py`, `sql_agent.py`)
+- SQL returns separate `year` / `month` integer columns; chart agent draws one line per year with Jan–Dec x-axis ordering.
+- `_to_label` normalises PostgreSQL float EXTRACT results (e.g. `2024.0` → `"2024"`) for consistent series matching.
+
+### Fix: Various chart rendering bugs (`chart_agent.py`)
+- Bar chart: constructs `YYYY-MM` labels when month numbers repeat across years.
+- Column name fallback: validates `x_col`/`y_col` against actual columns before rendering.
+- `_format_rows`: added missing 3+ column markdown table return (was returning `None`, crashing response).
+- Year numbers no longer formatted as `2,022` — thousand separators only applied for values ≥ 10,000.
+- sqlglot `TO_CHAR` transpilation error suppressed with `unsupported_level=IGNORE`.

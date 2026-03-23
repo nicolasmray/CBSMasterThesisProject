@@ -36,11 +36,7 @@ instead of returning a useless "context is insufficient" message.
 
 from __future__ import annotations
 
-import os
-
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
 from state import AgentState
 from llm_config import get_llm
@@ -51,7 +47,8 @@ def _fmt_value(v) -> str:
     try:
         f = float(v)
         if f == int(f):
-            return f"{int(f):,}"
+            i = int(f)
+            return f"{i:,}" if abs(i) >= 10_000 else str(i)
         return f"{f:,.2f}"
     except (TypeError, ValueError):
         return str(v) if v is not None else ""
@@ -79,7 +76,17 @@ def _format_rows(rows: list[dict]) -> str:
             f"{r.get(label_col)}: `{_fmt_value(r.get(value_col))}`"
             for r in rows
         )
-    
+
+    # 3+ columns: markdown table
+    header = "| " + " | ".join(cols) + " |"
+    separator = "| " + " | ".join("---" for _ in cols) + " |"
+    data_lines = [
+        "| " + " | ".join(_fmt_value(r.get(c)) for c in cols) + " |"
+        for r in rows
+    ]
+    return "\n".join([header, separator] + data_lines)
+
+
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
 INTERPRETATION_PROMPT = """\
@@ -162,12 +169,7 @@ def response_agent(state: AgentState) -> AgentState:
     chart_spec: dict = state.get("chart_spec", {})
     error: str = state.get("error", "")
 
-    llm = ChatGroq(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        api_key=os.getenv("GROQ_API_KEY"),
-        # Low temperature keeps interpretation focused and non-inventive
-        temperature=0.1,
-    )
+    llm = get_llm("response")
 
     # ── Path A: SQL results present ────────────────────────────────────────────
     # This is the normal success path for any SQL query (COUNT, aggregate, or
@@ -190,7 +192,7 @@ def response_agent(state: AgentState) -> AgentState:
         )
         if rag_context:
             interpretation_ctx += f"\n\nAdditional business context:\n{rag_context}"
-        if chart_spec and chart_spec.get("image_base64"):
+        if chart_spec and chart_spec.get("options"):
             interpretation_ctx += (
                 f"\n\nA {chart_spec.get('chart_type', 'chart')} chart titled "
                 f'"{chart_spec.get("title", "Chart")}" was generated for this data.'

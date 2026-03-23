@@ -45,7 +45,10 @@ Your job:
 6. When the user asks for names, labels, or descriptions, always JOIN to the table that
    contains that human-readable text — do not return just IDs. For customer names,
    join through person.person to get firstname and lastname.
-7. Return ONLY the raw SQL query — no markdown fences, no explanation.
+7. For time-series queries, always use EXTRACT to return date parts as separate integer columns
+   (e.g. year, month) and ORDER BY them ASC. Never use TO_CHAR or combined date strings.
+   Example: EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
+8. Return ONLY the raw SQL query — no markdown fences, no explanation.
 """
 
 SQL_RETRY_PROMPT = """\
@@ -83,12 +86,18 @@ def _validate_sql(sql: str) -> str:
     for source_dialect in (None, "tsql"):
         try:
             parsed = sqlglot.parse_one(sql, dialect=source_dialect)
-            return parsed.sql(dialect="postgres")
+            return parsed.sql(
+                dialect="postgres",
+                unsupported_level=sqlglot.ErrorLevel.IGNORE,
+            )
         except sqlglot.errors.ParseError:
             continue
+        except Exception:
+            # Transpilation failed (e.g. TO_CHAR format unsupported) — original SQL is fine
+            return sql
     # If all dialects fail, raise the error from the default parser
     parsed = sqlglot.parse_one(sql)
-    return parsed.sql(dialect="postgres")
+    return parsed.sql(dialect="postgres", unsupported_level=sqlglot.ErrorLevel.IGNORE)
 
 
 async def _run_sql(state: AgentState) -> AgentState:

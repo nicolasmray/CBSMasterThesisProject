@@ -16,7 +16,7 @@ class AgentState(TypedDict, total=False):
     sql_query: str
     sql_result: list[dict]
     rag_context: str
-    chart_spec: dict  # contains base64 PNG under key "image_base64"
+    chart_spec: dict  # contains Plotly figure JSON under key "figure_json"
     final_answer: str
     error: str
     retry_count: int
