@@ -47,3 +47,27 @@ def load_schema_snapshot() -> dict:
     """
     with open(SNAPSHOT_PATH, "r") as f:
         return json.load(f)
+
+
+# ── Cached compact schema string ─────────────────────────────────────────────
+_compact_schema_cache: str | None = None
+
+
+def get_compact_schema() -> str:
+    """Return the compact schema string, building and caching it on first call.
+
+    Format: one line per table — "schema.table: col(type), col(type), ..."
+    """
+    global _compact_schema_cache
+    if _compact_schema_cache is not None:
+        return _compact_schema_cache
+
+    schema = load_schema_snapshot()
+    lines = []
+    for table, cols in schema.items():
+        col_defs = ", ".join(
+            f"{c['column_name']}({c['data_type']})" for c in cols
+        )
+        lines.append(f"{table}: {col_defs}")
+    _compact_schema_cache = "\n".join(lines)
+    return _compact_schema_cache

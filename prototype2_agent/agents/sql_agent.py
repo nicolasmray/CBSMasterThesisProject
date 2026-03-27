@@ -17,6 +17,7 @@ from mcp.client.stdio import stdio_client
 from state import AgentState
 from mcp_client import get_server_params, call_tool
 from llm_config import get_llm
+from db.schema_snapshot import get_compact_schema
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SQL_SYSTEM_PROMPT = """\
@@ -111,21 +112,9 @@ async def _run_sql(state: AgentState) -> AgentState:
         async with _mcp_session(read_stream, write_stream) as session:
             await session.initialize()
 
-            # Fetch schema snapshot via MCP and format compactly.
-            # json.dumps(indent=2) of a large schema (e.g. AdventureWorks) can
-            # exceed 30 000 tokens — the Groq TPM limit for this model.
-            # Compact format "schema.table: col(type), ..." cuts that by ~70%.
-            schema = await call_tool(session, "get_schema_snapshot", {})
-            if schema and isinstance(schema, dict):
-                lines = []
-                for table, cols in schema.items():
-                    col_defs = ", ".join(
-                        f"{c['column_name']}({c['data_type']})" for c in cols
-                    )
-                    lines.append(f"{table}: {col_defs}")
-                schema_str = "\n".join(lines)
-            else:
-                schema_str = "No schema available."
+            # Schema is read directly from disk and cached in-process
+            # (avoids spawning an MCP subprocess on every query).
+            schema_str = get_compact_schema()
 
             llm = get_llm("sql")
 
