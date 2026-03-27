@@ -4,6 +4,7 @@ Receives sql_result and user_query, decides the best chart type and axes,
 then generates the chart using Plotly. No MCP tools needed.
 """
 
+import calendar
 import json
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -130,6 +131,26 @@ def _sort_key(val):
         return (1, str(val))
 
 
+def _aggregate(rows: list[dict], x_col: str, y_col: str) -> tuple[list, list]:
+    """Sum y values for duplicate x keys and return sorted (x_vals, y_vals).
+
+    Handles the case where the same x value (e.g. month=3) appears multiple
+    times in different rows (e.g. across years) — sums them into one bar/point.
+    """
+    agg: dict[str, float] = {}
+    for row in rows:
+        xk = _to_label(row.get(x_col, ""))
+        try:
+            agg[xk] = agg.get(xk, 0.0) + float(row.get(y_col, 0) or 0)
+        except (TypeError, ValueError):
+            agg.setdefault(xk, 0.0)
+    pairs = sorted(agg.items(), key=lambda p: _sort_key(p[0]))
+    if not pairs:
+        return [], []
+    xs, ys = zip(*pairs)
+    return list(xs), list(ys)
+
+
 def generate_chart(
     data: list[dict], chart_type: str, x: str, y: str, title: str,
     x_label: str = "", y_label: str = "",
@@ -152,14 +173,7 @@ def generate_chart(
         series = list(dict.fromkeys(_to_label(row.get(group, "")) for row in data))
         for i, grp in enumerate(series):
             subset = [row for row in data if _to_label(row.get(group, "")) == grp]
-            gx = [_to_label(row.get(x, "")) for row in subset]
-            gy = []
-            for row in subset:
-                v = row.get(y, 0)
-                try:
-                    gy.append(float(v))
-                except (TypeError, ValueError):
-                    gy.append(0)
+            gx, gy = _aggregate(subset, x, y)
             fig.add_trace(go.Bar(
                 x=gx, y=gy, name=str(grp),
                 marker_color=_PALETTE[i % len(_PALETTE)],
@@ -176,24 +190,27 @@ def generate_chart(
             subplot_titles=panels,
             shared_yaxes=True,
         )
+        _month_nums = [str(i) for i in range(1, 13)]
+        _month_abbrs = [calendar.month_abbr[i] for i in range(1, 13)]
         for idx, panel in enumerate(panels):
             r = idx // ncols + 1
             c = idx % ncols + 1
             subset = [row for row in data if _to_label(row.get(facet, "")) == panel]
-            px_vals = [_to_label(row.get(x, "")) for row in subset]
-            py_vals = []
-            for row in subset:
-                v = row.get(y, 0)
-                try:
-                    py_vals.append(float(v))
-                except (TypeError, ValueError):
-                    py_vals.append(0)
+            px_vals, py_vals = _aggregate(subset, x, y)
             fig.add_trace(go.Bar(
                 x=px_vals, y=py_vals,
                 marker_color=_PALETTE[idx % len(_PALETTE)],
                 hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
                 showlegend=False,
             ), row=r, col=c)
+            if px_vals and all(v in _month_nums for v in px_vals):
+                axis_key = "xaxis" if idx == 0 else f"xaxis{idx + 1}"
+                fig.update_layout(**{axis_key: dict(
+                    categoryorder="array",
+                    categoryarray=_month_nums,
+                    tickvals=_month_nums,
+                    ticktext=_month_abbrs,
+                )})
     elif chart_type == "bar":
         # If x has duplicates (e.g. month numbers across multiple years),
         # prefix with the year column to produce unique YYYY-MM labels.
@@ -226,12 +243,8 @@ def generate_chart(
                 key=_sort_key,
             )
             for i, grp in enumerate(series):
-                subset = sorted(
-                    [row for row in data if _to_label(row.get(group, "")) == grp],
-                    key=lambda r: _sort_key(r.get(x, "")),
-                )
-                gx = [_to_label(row.get(x, "")) for row in subset]
-                gy = [float(row.get(y, 0) or 0) for row in subset]
+                subset = [row for row in data if _to_label(row.get(group, "")) == grp]
+                gx, gy = _aggregate(subset, x, y)
                 fig.add_trace(go.Scatter(
                     x=gx, y=gy, mode="lines+markers", name=grp,
                     line=dict(color=_PALETTE[i % len(_PALETTE)]),
@@ -252,12 +265,8 @@ def generate_chart(
                 key=_sort_key,
             )
             for i, grp in enumerate(series):
-                subset = sorted(
-                    [row for row in data if _to_label(row.get(group, "")) == grp],
-                    key=lambda r: _sort_key(r.get(x, "")),
-                )
-                gx = [_to_label(row.get(x, "")) for row in subset]
-                gy = [float(row.get(y, 0) or 0) for row in subset]
+                subset = [row for row in data if _to_label(row.get(group, "")) == grp]
+                gx, gy = _aggregate(subset, x, y)
                 fig.add_trace(go.Scatter(
                     x=gx, y=gy, mode="lines", fill="tozeroy", name=grp,
                     line=dict(color=_PALETTE[i % len(_PALETTE)]),
@@ -289,9 +298,12 @@ def generate_chart(
             marker_color=_PALETTE[0],
         ))
     elif chart_type == "waterfall":
-        measures = ["relative"] * (len(y_vals) - 1) + ["total"]
+        total = sum(y_vals)
         fig.add_trace(go.Waterfall(
-            x=x_vals, y=y_vals, measure=measures, name=y,
+            x=list(x_vals) + ["Total"],
+            y=list(y_vals) + [total],
+            measure=["relative"] * len(y_vals) + ["total"],
+            name=y,
             hovertemplate=hover,
         ))
     elif chart_type == "treemap":
@@ -328,12 +340,12 @@ def generate_chart(
         all_x = [str(v) for v in x_vals if v != ""]
         _month_nums = [str(i) for i in range(1, 13)]
         if all_x and all(v in _month_nums for v in all_x):
+            _month_abbrs = [calendar.month_abbr[i] for i in range(1, 13)]
             xaxis_extra = dict(
                 categoryorder="array",
                 categoryarray=_month_nums,
                 tickvals=_month_nums,
-                ticktext=["Jan","Feb","Mar","Apr","May","Jun",
-                          "Jul","Aug","Sep","Oct","Nov","Dec"],
+                ticktext=_month_abbrs,
             )
         else:
             xaxis_extra = {}
@@ -343,10 +355,18 @@ def generate_chart(
             tickangle=-30,
             **xaxis_extra,
         )
-        # Waterfall bars stack cumulatively, so y_max must cover the running total
+        # Waterfall bars stack cumulatively, so y_max must cover the running total.
+        # For grouped line charts, compute y_max from the aggregated series values so
+        # the axis isn't skewed by one dominant group making all others invisible.
         if chart_type == "waterfall":
             cumulative_max = sum(v for v in y_vals if v > 0)
             effective_y_vals = [cumulative_max]
+        elif chart_type in ("line", "area") and group:
+            effective_y_vals = []
+            for grp in dict.fromkeys(_to_label(row.get(group, "")) for row in data):
+                subset = [row for row in data if _to_label(row.get(group, "")) == grp]
+                _, gy = _aggregate(subset, x, y)
+                effective_y_vals.extend(gy)
         else:
             effective_y_vals = y_vals
         layout["yaxis"] = dict(

@@ -68,7 +68,7 @@ def _render_assistant_turn(
     # 3. SQL query
     if sql_query:
         try:
-            formatted_sql = sqlglot.transpile(sql_query, pretty=True)[0]
+            formatted_sql = sqlglot.transpile(sql_query, pretty=True, read="postgres", write="postgres")[0]
         except Exception:
             formatted_sql = sql_query
         with st.expander("SQL Query", expanded=False):
