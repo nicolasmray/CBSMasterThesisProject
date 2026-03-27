@@ -19,15 +19,9 @@ def capture_schema_snapshot() -> dict:
     engine = get_engine()
     with engine.connect() as conn:
         rows = conn.execute(text("""
-<<<<<<< HEAD
-            SELECT table_schema || '.' || table_name AS table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-=======
             SELECT table_schema, table_name, column_name, data_type
             FROM information_schema.columns
             WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'public', 'hr', 'pe', 'pr', 'pu', 'sa')
->>>>>>> origin/main
             ORDER BY table_schema, table_name, ordinal_position
         """)).fetchall()
 

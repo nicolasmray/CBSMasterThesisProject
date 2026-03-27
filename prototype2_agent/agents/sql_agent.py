@@ -117,12 +117,18 @@ async def _run_sql(state: AgentState) -> AgentState:
             # Compact format "schema.table: col(type), ..." cuts that by ~70%.
             schema = await call_tool(session, "get_schema_snapshot", {})
             if schema:
+                tables = schema.get("tables", schema) if isinstance(schema, dict) else {}
+                foreign_keys = schema.get("foreign_keys", []) if isinstance(schema, dict) else []
                 lines = []
-                for table, cols in schema.items():
+                for table, cols in tables.items():
                     col_defs = ", ".join(
                         f"{c['column_name']}({c['data_type']})" for c in cols
                     )
                     lines.append(f"{table}: {col_defs}")
+                if foreign_keys:
+                    lines.append("\nForeign keys:")
+                    for fk in foreign_keys:
+                        lines.append(f"  {fk['source']} -> {fk['target']}")
                 schema_str = "\n".join(lines)
             else:
                 schema_str = "No schema available."
