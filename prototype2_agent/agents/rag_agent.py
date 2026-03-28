@@ -1,96 +1,99 @@
 """RAG specialist agent.
 
-Answers questions by retrieving relevant document chunks from the vector store
-via the MCP server's semantic_search tool.
+Retrieves relevant document chunks from the pgvector store, then uses an LLM
+to filter out noise (e.g. chunks that match on common words like "AdventureWorks"
+but are not actually relevant to the question). The LLM only selects — it does
+not synthesize or rephrase. Raw chunks are passed through to the response agent.
 """
 
-import asyncio
-import concurrent.futures
+import json
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from mcp.client.stdio import stdio_client
 
 from state import AgentState
-from mcp_client import get_server_params, call_tool
+from mcp_server.tools.rag_tools import semantic_search
 from llm_config import get_llm
 
-# ── System prompt ─────────────────────────────────────────────────────────────
-RAG_SYSTEM_PROMPT = """\
-You are a RAG (Retrieval-Augmented Generation) specialist agent.
+# ── Reranker prompt ───────────────────────────────────────────────────────────
+RERANKER_PROMPT = """\
+You are a relevance filter. Given a user question and a list of retrieved
+document chunks, your job is to select ONLY the chunks that are genuinely
+relevant to answering the question.
 
-You have been given context passages retrieved from a document store.
-Use ONLY the provided context to answer the user's question.
-If the context does not contain enough information, say so clearly.
-Do not make up facts. Cite specific passages when possible.
+A chunk is relevant if it contains information that directly helps answer
+the question. A chunk is NOT relevant just because it shares common words
+(like a company name) with the question.
 
-Respond with a clear, concise answer suitable for a business audience.
+Return a JSON array of the chunk indices (0-based) that are relevant.
+Example: [0, 2, 5]
+
+If NONE of the chunks are relevant, return an empty array: []
+
+Return ONLY the JSON array — no explanation, no markdown fences.
 """
-
-
-async def _run_rag(state: AgentState) -> AgentState:
-    """Async implementation: search documents via MCP and synthesize an answer."""
-    user_query = state["user_query"]
-
-    # Connect to MCP server and perform semantic search
-    server_params = get_server_params()
-    async with stdio_client(server_params) as (read_stream, write_stream):
-        async with mcp_client_session(read_stream, write_stream) as session:
-            await session.initialize()
-
-            # Retrieve relevant document chunks
-            chunks = await call_tool(
-                session, "semantic_search", {"query": user_query, "top_k": 5}
-            )
-
-    # Build context string from retrieved chunks
-    if chunks and isinstance(chunks, list):
-        rag_context = "\n\n---\n\n".join(str(c) for c in chunks)
-    else:
-        rag_context = "No relevant documents found."
-
-    # Ask the LLM to synthesize an answer from the context
-    llm = get_llm("rag")
-
-    messages = [
-        SystemMessage(content=RAG_SYSTEM_PROMPT),
-        HumanMessage(
-            content=(
-                f"Context:\n{rag_context}\n\n"
-                f"Question: {user_query}"
-            )
-        ),
-    ]
-
-    response = llm.invoke(messages)
-    return {"rag_context": response.content.strip()}
-
-
-# We need an import for the MCP client session context manager
-from mcp import ClientSession
-
-
-class mcp_client_session:
-    """Async context manager that wraps ClientSession initialization."""
-
-    def __init__(self, read_stream, write_stream):
-        self._session = ClientSession(read_stream, write_stream)
-
-    async def __aenter__(self):
-        await self._session.__aenter__()
-        return self._session
-
-    async def __aexit__(self, *args):
-        await self._session.__aexit__(*args)
 
 
 def rag_agent(state: AgentState) -> AgentState:
-    """Retrieve document context via MCP semantic_search and synthesize an answer.
+    """Retrieve and filter document chunks from pgvector.
+
+    1. Semantic search retrieves candidate chunks (wide net).
+    2. LLM reranker filters out irrelevant chunks (keyword noise).
+    3. Raw filtered chunks are returned — no synthesis, no rephrasing.
 
     Args:
         state: Current pipeline state with user_query.
 
     Returns:
-        Partial AgentState update with rag_context.
+        Partial AgentState with rag_chunks (raw filtered) and rag_context (formatted).
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, _run_rag(state)).result()
+    user_query = state["user_query"]
+
+    # Step 1: Retrieve candidate chunks
+    candidates = semantic_search(user_query)
+
+    if not candidates:
+        return {"rag_chunks": [], "rag_context": "No relevant documents found."}
+
+    # Step 2: LLM reranker — select only truly relevant chunks
+    chunks_for_llm = "\n\n".join(
+        f"[Chunk {i}] (score: {c['score']}, source: {c['source']})\n{c['content']}"
+        for i, c in enumerate(candidates)
+    )
+
+    llm = get_llm("rag")
+    response = llm.invoke([
+        SystemMessage(content=RERANKER_PROMPT),
+        HumanMessage(content=(
+            f"Question: {user_query}\n\n"
+            f"Chunks:\n{chunks_for_llm}"
+        )),
+    ])
+
+    # Parse the selected indices
+    raw = response.content.strip().strip("`").strip()
+    if raw.lower().startswith("json"):
+        raw = raw[4:].strip()
+    try:
+        selected_indices = json.loads(raw)
+        if not isinstance(selected_indices, list):
+            selected_indices = list(range(len(candidates)))
+    except (json.JSONDecodeError, TypeError):
+        # Fallback: keep all candidates if parsing fails
+        selected_indices = list(range(len(candidates)))
+
+    # Filter to valid indices
+    filtered = [
+        candidates[i] for i in selected_indices
+        if isinstance(i, int) and 0 <= i < len(candidates)
+    ]
+
+    # Build context string for downstream agents (hybrid path)
+    if filtered:
+        rag_context = "\n\n---\n\n".join(
+            f"[{c['source']} | score: {c['score']}]\n{c['content']}"
+            for c in filtered
+        )
+    else:
+        rag_context = "No relevant documents found."
+
+    return {"rag_chunks": filtered, "rag_context": rag_context}

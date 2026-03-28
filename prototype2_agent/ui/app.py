@@ -45,6 +45,7 @@ def _render_assistant_turn(
     final_answer: str,
     sql_query: str,
     sql_result: list[dict],
+    rag_chunks: list[dict] | None,
     chart_options: list[dict] | None,
     turn_key: str,
 ) -> None:
@@ -54,18 +55,30 @@ def _render_assistant_turn(
         final_answer:  Markdown-formatted LLM answer.
         sql_query:     Raw SQL string; empty string when no query was run.
         sql_result:    List of row-dicts from SQL execution; empty list when none.
+        rag_chunks:    List of retrieved document chunks; None when no RAG ran.
         chart_options: List of up to 3 dicts with keys figure_json, chart_type, title.
         turn_key:      Unique key per turn to avoid widget ID collisions.
     """
     # 1. LLM answer
     st.markdown(final_answer)
 
-    # 2. Raw data table
+    # 2. Raw data table (SQL flow)
     if sql_result:
         with st.expander(f"Raw Data — {len(sql_result)} rows", expanded=False):
             st.dataframe(sql_result, width="stretch")
 
-    # 3. SQL query
+    # 3. Retrieved document chunks (RAG flow)
+    if rag_chunks:
+        with st.expander(f"Retrieved Sources — {len(rag_chunks)} chunk(s)", expanded=False):
+            for i, c in enumerate(rag_chunks):
+                source = c.get("source", "unknown")
+                score = c.get("score", "?")
+                st.markdown(f"**Chunk {i + 1}** — `{source}` (similarity: {score})")
+                st.text(c.get("content", ""))
+                if i < len(rag_chunks) - 1:
+                    st.divider()
+
+    # 4. SQL query
     if sql_query:
         try:
             formatted_sql = sqlglot.transpile(sql_query, pretty=True, read="postgres", write="postgres")[0]
@@ -102,6 +115,7 @@ for msg in st.session_state.messages:
                 final_answer=msg["content"],
                 sql_query=msg.get("sql_query", ""),
                 sql_result=msg.get("sql_result", []),
+                rag_chunks=msg.get("rag_chunks"),
                 chart_options=msg.get("chart_options"),
                 turn_key=msg.get("turn_key", str(id(msg))),
             )
@@ -127,6 +141,7 @@ if user_input:
                 )
                 sql_query: str = result.get("sql_query", "")
                 sql_result: list[dict] = result.get("sql_result", [])
+                rag_chunks: list[dict] | None = result.get("rag_chunks") or None
                 chart_spec: dict = result.get("chart_spec", {})
 
                 chart_options = chart_spec.get("options") if chart_spec else None
@@ -136,16 +151,18 @@ if user_input:
                     final_answer=final_answer,
                     sql_query=sql_query,
                     sql_result=sql_result,
+                    rag_chunks=rag_chunks,
                     chart_options=chart_options,
                     turn_key=turn_key,
                 )
 
-                # Store raw data so the replay loop re-renders the table on reload
+                # Store raw data so the replay loop re-renders on reload
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": final_answer,
                     "sql_query": sql_query,
                     "sql_result": sql_result,
+                    "rag_chunks": rag_chunks,
                     "chart_options": chart_options,
                     "turn_key": turn_key,
                 })

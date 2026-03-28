@@ -12,19 +12,31 @@ import json
 from sqlalchemy import text
 
 from db.connection import get_engine
-from llm_config import get_embeddings
+from llm_config import get_embeddings, RAG_TOP_K, RAG_SIMILARITY_THRESHOLD
 
 
-def semantic_search(query: str, top_k: int = 5) -> list[str]:
+def semantic_search(query: str, top_k: int | None = None,
+                    min_score: float | None = None) -> list[dict]:
     """Embed the query and retrieve the closest document chunks from pgvector.
+
+    Uses a similarity threshold to dynamically filter results — only chunks
+    above the threshold are returned, up to top_k. Settings default to the
+    values in llm_config.py.
 
     Args:
         query: The natural-language search query.
-        top_k: Number of results to return.
+        top_k: Max chunks to return (default: RAG_TOP_K from llm_config).
+        min_score: Minimum cosine similarity 0-1 (default: RAG_SIMILARITY_THRESHOLD).
 
     Returns:
-        List of document content strings ranked by cosine similarity.
+        List of dicts with 'content', 'score', and 'source' keys,
+        ranked by similarity (highest first).
     """
+    if top_k is None:
+        top_k = RAG_TOP_K
+    if min_score is None:
+        min_score = RAG_SIMILARITY_THRESHOLD
+
     query_embedding = get_embeddings().embed_query(query)
     embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
@@ -32,15 +44,19 @@ def semantic_search(query: str, top_k: int = 5) -> list[str]:
     with engine.connect() as conn:
         rows = conn.execute(
             text("""
-                SELECT content, 1 - (embedding <=> CAST(:emb AS vector)) AS score
+                SELECT content,
+                       1 - (embedding <=> CAST(:emb AS vector)) AS score,
+                       metadata->>'source' AS source
                 FROM rag_chunks
+                WHERE 1 - (embedding <=> CAST(:emb AS vector)) >= :min_score
                 ORDER BY embedding <=> CAST(:emb AS vector)
                 LIMIT :k
             """),
-            {"emb": embedding_literal, "k": top_k},
+            {"emb": embedding_literal, "k": top_k, "min_score": min_score},
         ).fetchall()
 
-    return [row[0] for row in rows]
+    return [{"content": row[0], "score": round(row[1], 3), "source": row[2]}
+            for row in rows]
 
 
 def embed_and_store(content: str, metadata: dict) -> bool:

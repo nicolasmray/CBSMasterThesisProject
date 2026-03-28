@@ -32,6 +32,10 @@ AGENT_MODELS = {
 # ─── Embedding model (always local via Ollama — free, no API tokens) ─────────
 EMBEDDING_MODEL = "mxbai-embed-large"
 
+# ─── RAG retrieval settings ──────────────────────────────────────────────────
+RAG_TOP_K = 10                 # max chunks to retrieve from pgvector
+RAG_SIMILARITY_THRESHOLD = 0.55  # min cosine similarity to include a chunk (0-1)
+
 # ─── Per-agent temperature overrides (set to None to use default) ────────────
 AGENT_TEMPERATURES = {
     "orchestrator": 0,

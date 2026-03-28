@@ -118,9 +118,9 @@ def ingest_knowledge_base():
 
         for i, chunk in enumerate(chunks):
             metadata = {
+                **(chunk.metadata if hasattr(chunk, "metadata") else {}),
                 "source": fname,
                 "chunk_index": i,
-                **(chunk.metadata if hasattr(chunk, "metadata") else {}),
             }
             embed_and_store(chunk.page_content, metadata)
 

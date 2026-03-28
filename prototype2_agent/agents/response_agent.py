@@ -228,14 +228,25 @@ def response_agent(state: AgentState) -> AgentState:
         return {"final_answer": msg}
 
     # ── Path D: RAG-only (no SQL result, but documents were retrieved) ─────────
-    if rag_context:
+    # The reranker in rag_agent already filtered irrelevant chunks.
+    # LLM synthesizes an answer strictly from the filtered content.
+    # Raw chunks are passed to the UI separately (shown in an expander).
+    rag_chunks: list[dict] = state.get("rag_chunks", [])
+    if rag_chunks:
+        # Build context from filtered chunks for the LLM
+        chunk_text = "\n\n---\n\n".join(c["content"] for c in rag_chunks)
+
         response = llm.invoke([
             SystemMessage(content=RAG_PROMPT),
             HumanMessage(
-                content=f"Question: {user_query}\n\nContext:\n{rag_context}"
+                content=f"Question: {user_query}\n\nContext:\n{chunk_text}"
             ),
         ])
         return {"final_answer": response.content.strip()}
+
+    # Legacy fallback: rag_context without structured chunks
+    if rag_context:
+        return {"final_answer": rag_context}
 
     # ── Path E: nothing available ──────────────────────────────────────────────
     return {

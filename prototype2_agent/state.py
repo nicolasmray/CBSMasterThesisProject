@@ -15,7 +15,8 @@ class AgentState(TypedDict, total=False):
     schema_context: str  # relevant table/column names passed to sql_agent
     sql_query: str
     sql_result: list[dict]
-    rag_context: str
+    rag_context: str  # LLM-synthesized interpretation (for hybrid path)
+    rag_chunks: list[dict]  # raw retrieved chunks: [{content, score, source}, ...]
     chart_spec: dict  # contains Plotly figure JSON under key "figure_json"
     final_answer: str
     error: str
