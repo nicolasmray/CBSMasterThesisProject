@@ -1,0 +1,683 @@
+AdventureWorks Key Performance Indicators (KPIs)
+=================================================
+
+This document defines every standard KPI used across AdventureWorks divisions.
+Each KPI includes its business definition, the exact database tables and columns
+required for computation, the SQL calculation logic, recommended time granularity,
+and benchmark thresholds where applicable. These definitions serve as the single
+source of truth for all dashboards, ad-hoc analyses, and executive reporting.
+
+
+================================================================================
+1. REVENUE & SALES KPIs
+================================================================================
+
+1.1 Total Revenue (Net Sales)
+  Definition: The sum of all sales order line totals after discounts.
+  Formula: SUM(unitprice * orderqty * (1 - unitpricediscount))
+  Source tables: sales.salesorderdetail (sod), sales.salesorderheader (soh)
+  Join condition: sod.salesorderid = soh.salesorderid
+  Filter: Only orders where soh.status = 5 (shipped) should be counted in
+    finalized revenue reports. Orders with status < 5 are in-progress.
+  Granularity: Daily, monthly, quarterly, yearly.
+  Note: There is NO pre-calculated linetotal or revenue column in salesorderdetail.
+    Always derive it from unitprice * orderqty * (1 - unitpricediscount).
+
+1.2 Gross Revenue (Before Discounts)
+  Definition: Total revenue before any discounts are applied.
+  Formula: SUM(unitprice * orderqty)
+  Source tables: sales.salesorderdetail
+  Use case: Comparing gross vs net revenue shows the impact of discounting strategy.
+
+1.3 Total Discount Given
+  Definition: The monetary value of all discounts applied across orders.
+  Formula: SUM(unitprice * orderqty * unitpricediscount)
+  Source tables: sales.salesorderdetail
+  Benchmark: Discount as a percentage of gross revenue should stay below 8%.
+    Exceeding 10% triggers a pricing review.
+
+1.4 Discount Rate
+  Definition: The average discount percentage applied across all line items.
+  Formula: AVG(unitpricediscount) or SUM(discount_amount) / SUM(gross_revenue)
+  Source tables: sales.salesorderdetail
+  Granularity: Monthly, by territory, by product category.
+
+1.5 Revenue Growth Rate
+  Definition: Percentage change in total revenue compared to the prior period.
+  Formula: (current_period_revenue - prior_period_revenue) / prior_period_revenue * 100
+  Source tables: sales.salesorderdetail, sales.salesorderheader
+  Time anchor: Always anchor to MAX(orderdate) in the data, not CURRENT_DATE,
+    since the database contains historical data (2011-2014).
+  Granularity: Month-over-month (MoM), quarter-over-quarter (QoQ), year-over-year (YoY).
+  Benchmark: Healthy YoY growth target is 10-15%.
+
+1.6 Average Order Value (AOV)
+  Definition: Average revenue per sales order.
+  Formula: Total Revenue / COUNT(DISTINCT salesorderid)
+  Source tables: sales.salesorderdetail, sales.salesorderheader
+  Granularity: Monthly, by channel (online vs offline), by territory.
+  Benchmark: AOV below $500 may indicate excessive small-order volume.
+
+1.7 Average Line Items per Order
+  Definition: Average number of distinct products per order.
+  Formula: COUNT(salesorderdetailid) / COUNT(DISTINCT salesorderid)
+  Source tables: sales.salesorderdetail
+  Use case: Cross-selling effectiveness measurement.
+
+1.8 Sales by Territory
+  Definition: Revenue broken down by sales territory.
+  Source tables: sales.salesorderheader (soh), sales.salesterritory (st)
+  Join: soh.territoryid = st.territoryid
+  Dimensions: st.name (territory name), st.countryregioncode, st.group (region group).
+  Territory groups: North America, Europe, Pacific.
+
+1.9 Online vs Offline Revenue Split
+  Definition: Revenue segmented by sales channel.
+  Source tables: sales.salesorderheader, sales.salesorderdetail
+  Dimension: salesorderheader.onlineorderflag (true = online, false = reseller/store).
+  Benchmark: Online channel should represent at least 30% of total revenue.
+
+1.10 Revenue per Salesperson
+  Definition: Total revenue attributed to each salesperson.
+  Source tables: sales.salesorderheader (soh), sales.salesorderdetail (sod),
+    sales.salesperson (sp), humanresources.employee (e), person.person (p)
+  Joins: soh.salespersonid = sp.businessentityid,
+    sp.businessentityid = e.businessentityid,
+    e.businessentityid = p.businessentityid
+  Note: Orders where salespersonid IS NULL are online direct orders with no rep.
+  Granularity: Monthly, quarterly.
+
+1.11 Salesperson Quota Attainment
+  Definition: Actual sales as a percentage of assigned quota.
+  Formula: salesperson.salesytd / salesperson.salesquota * 100
+  Source tables: sales.salesperson
+  Historical quotas: sales.salespersonquotahistory for period-by-period tracking.
+  Benchmark: Target is 100% attainment. Below 80% triggers performance review.
+    Above 120% triggers quota reassessment.
+
+1.12 Sales by Special Offer / Promotion
+  Definition: Revenue and order volume for each active promotion.
+  Source tables: sales.salesorderdetail (sod), sales.specialofferproduct (sop),
+    sales.specialoffer (so)
+  Joins: sod.specialofferid = sop.specialofferid AND sod.productid = sop.productid,
+    sop.specialofferid = so.specialofferid
+  Dimensions: so.description, so.type, so.category
+  Note: When the user asks for revenue "by category" without mentioning promotions,
+    use product categories (production.productcategory), NOT special offer categories.
+
+1.13 Revenue by Currency
+  Definition: Revenue broken down by transaction currency.
+  Source tables: sales.salesorderheader (soh), sales.currencyrate (cr), sales.currency (c)
+  Joins: soh.currencyrateid = cr.currencyrateid, cr.tocurrencycode = c.currencycode
+  Note: Orders with currencyrateid IS NULL are in USD (base currency).
+
+1.14 Tax Revenue
+  Definition: Total tax collected on sales orders.
+  Formula: SUM(taxamt) from sales.salesorderheader
+  Granularity: By territory, by period.
+  Note: Tax and freight are NEVER included in "revenue" unless the report explicitly
+    says "total due" (which maps to salesorderheader.totaldue = subtotal + taxamt + freight).
+
+1.15 Freight Cost on Sales
+  Definition: Total shipping/freight cost on sales orders.
+  Formula: SUM(freight) from sales.salesorderheader
+  Related KPI: Freight-to-revenue ratio = SUM(freight) / SUM(subtotal).
+  Benchmark: Freight should stay below 3% of subtotal.
+
+1.16 Sales by Shipping Method
+  Definition: Order count and revenue by shipping method.
+  Source tables: sales.salesorderheader (soh), purchasing.shipmethod (sm)
+  Join: soh.shipmethodid = sm.shipmethodid
+  Dimensions: sm.name, sm.shipbase, sm.shiprate.
+
+1.17 Credit Card Usage Distribution
+  Definition: Breakdown of payment methods used for orders.
+  Source tables: sales.salesorderheader (soh), sales.creditcard (cc)
+  Join: soh.creditcardid = cc.creditcardid
+  Dimensions: cc.cardtype (Vista, SuperiorCard, ColonialVoice, Distinguish).
+  Note: Orders where creditcardid IS NULL were paid by purchase order (reseller channel).
+
+1.18 Sales Reason Analysis
+  Definition: Which reasons customers cite for purchasing.
+  Source tables: sales.salesorderheadersalesreason (sohsr), sales.salesreason (sr)
+  Join: sohsr.salesreasonid = sr.salesreasonid
+  Dimensions: sr.name, sr.reasontype (Marketing, Promotion, Other).
+  Use case: Marketing effectiveness measurement.
+
+
+================================================================================
+2. PRODUCT PERFORMANCE KPIs
+================================================================================
+
+2.1 Top Selling Products (by Volume)
+  Definition: Products ranked by total units sold.
+  Formula: SUM(orderqty) from sales.salesorderdetail, grouped by productid.
+  Source tables: sales.salesorderdetail (sod), production.product (p)
+  Join: sod.productid = p.productid
+
+2.2 Top Selling Products (by Revenue)
+  Definition: Products ranked by total revenue generated.
+  Formula: SUM(unitprice * orderqty * (1 - unitpricediscount)) grouped by productid.
+  Source tables: sales.salesorderdetail (sod), production.product (p)
+
+2.3 Product Category Revenue
+  Definition: Revenue grouped by product hierarchy.
+  Source tables: sales.salesorderdetail (sod), production.product (p),
+    production.productsubcategory (psc), production.productcategory (pc)
+  Joins: sod.productid = p.productid,
+    p.productsubcategoryid = psc.productsubcategoryid,
+    psc.productcategoryid = pc.productcategoryid
+  Categories: Bikes, Components, Clothing, Accessories.
+  Note: Products with productsubcategoryid IS NULL are not assigned to any category.
+
+2.4 Gross Margin per Product
+  Definition: Profit margin based on list price vs standard cost.
+  Formula: (listprice - standardcost) / listprice * 100
+  Source table: production.product
+  Note: Products with listprice = 0 are internal/non-sellable items — exclude from margin reports.
+  Benchmark: Target gross margin is above 40%. Products below 20% margin need pricing review.
+
+2.5 Product Cost History Trend
+  Definition: How the standard manufacturing cost of a product has changed over time.
+  Source table: production.productcosthistory
+  Columns: productid, startdate, enddate, standardcost
+  Use case: Identify cost inflation or efficiency improvements over production cycles.
+
+2.6 Product List Price History Trend
+  Definition: Historical changes in the customer-facing price.
+  Source table: production.productlistpricehistory
+  Columns: productid, startdate, enddate, listprice
+  Use case: Pricing strategy analysis, correlation with sales volume changes.
+
+2.7 Inventory Turnover
+  Definition: How quickly inventory is sold relative to stock on hand.
+  Formula: Total units sold (from salesorderdetail) / Average inventory (from productinventory)
+  Source tables: sales.salesorderdetail, production.productinventory
+  Benchmark: Turnover below 2x per year suggests overstocking. Above 12x may risk stockouts.
+
+2.8 Current Inventory Levels
+  Definition: Total stock on hand by product and location.
+  Source table: production.productinventory
+  Columns: productid, locationid, shelf, bin, quantity
+  Join to production.location for location names (locationid -> location.locationid).
+
+2.9 Inventory Below Safety Stock
+  Definition: Products where current inventory falls below the safety threshold.
+  Formula: WHERE pi.quantity < p.safetystocklevel
+  Source tables: production.productinventory (pi), production.product (p)
+  Join: pi.productid = p.productid
+  Alert: These products should be flagged on inventory dashboards.
+
+2.10 Inventory Below Reorder Point
+  Definition: Products that need to be reordered.
+  Formula: WHERE SUM(pi.quantity) < p.reorderpoint (aggregated across all locations)
+  Source tables: production.productinventory (pi), production.product (p)
+  Action: Generate purchase recommendation for the vendor supplying this product.
+
+2.11 Product Scrap Rate
+  Definition: Percentage of manufactured units scrapped during production.
+  Formula: SUM(scrappedqty) / SUM(orderqty) * 100 from production.workorder
+  Source tables: production.workorder (wo), production.scrapreason (sr)
+  Join: wo.scrapreasonid = sr.scrapreasonid (for scrap reason breakdown)
+  Benchmark: Scrap rate above 3% by product triggers manufacturing process review.
+
+2.12 Days to Manufacture
+  Definition: Average calendar days required to produce a product.
+  Source table: production.product (daystomanufacture column)
+  Alternative: Actual manufacturing time = AVG(enddate - startdate) from production.workorder
+  Granularity: By product, by category.
+
+2.13 Work Order Volume & Completion
+  Definition: Number of work orders and their completion status.
+  Source table: production.workorder
+  Completed: enddate IS NOT NULL
+  In progress: enddate IS NULL AND startdate IS NOT NULL
+  Granularity: Monthly, by product.
+
+2.14 Bill of Materials Depth
+  Definition: Number of components required to assemble a product.
+  Source table: production.billofmaterials
+  Columns: productassemblyid (parent), componentid (child), bomlevel
+  Use case: Supply chain complexity analysis, cost rollup.
+
+2.15 Product Review Ratings
+  Definition: Customer satisfaction based on product reviews.
+  Source table: production.productreview
+  Columns: productid, rating (1-5), reviewername, reviewdate, comments
+  Formula: AVG(rating) grouped by productid
+  Benchmark: Average rating below 3.0 requires product quality investigation.
+
+2.16 Product Model & Description Coverage
+  Definition: How many products have catalog descriptions and photos.
+  Source tables: production.product (p), production.productmodel (pm),
+    production.productmodelproductdescriptionculture (pmpdc),
+    production.productphoto (pp), production.productproductphoto (ppp)
+  Use case: Identify products missing marketing content.
+
+2.17 Active vs Discontinued Products
+  Definition: Current product catalog size vs historical.
+  Source table: production.product
+  Active: discontinueddate IS NULL AND sellstartdate <= current data date AND
+    (sellenddate IS NULL OR sellenddate > current data date)
+  Discontinued: discontinueddate IS NOT NULL
+
+2.18 Product Line Distribution
+  Definition: Revenue and product count by product line.
+  Source table: production.product
+  Dimension: productline column (R = Road, M = Mountain, T = Touring, S = Standard).
+  Also: class (H = High, M = Medium, L = Low), style (W = Women, M = Men, U = Universal).
+
+2.19 Make vs Buy Analysis
+  Definition: Cost and volume comparison between manufactured and purchased products.
+  Source table: production.product
+  Dimension: makeflag (true = manufactured in-house, false = purchased from vendor).
+  Metrics: Count, average cost, total revenue, margin comparison.
+
+
+================================================================================
+3. CUSTOMER KPIs
+================================================================================
+
+3.1 Total Customer Count
+  Definition: Number of distinct customers in the system.
+  Formula: COUNT(DISTINCT customerid) from sales.customer
+  Segment by: personid IS NOT NULL (individual) vs storeid IS NOT NULL (store/reseller).
+
+3.2 Customer Lifetime Value (CLV)
+  Definition: Total revenue generated by a customer across all their orders.
+  Formula: SUM(unitprice * orderqty * (1 - unitpricediscount)) per customerid
+  Source tables: sales.customer (c), sales.salesorderheader (soh), sales.salesorderdetail (sod)
+  Joins: c.customerid = soh.customerid, soh.salesorderid = sod.salesorderid
+  Granularity: Rank customers by CLV; segment into deciles.
+
+3.3 Customer Acquisition by Period
+  Definition: Number of new customers acquired in each time period.
+  Formula: MIN(orderdate) per customerid from salesorderheader gives the acquisition date.
+    Count distinct customerid grouped by EXTRACT(YEAR FROM min_orderdate), EXTRACT(MONTH FROM min_orderdate).
+  Use case: Track growth of customer base over time.
+
+3.4 Repeat Purchase Rate
+  Definition: Percentage of customers who have placed more than one order.
+  Formula: COUNT(customers with order_count > 1) / COUNT(all customers) * 100
+  Source tables: sales.salesorderheader grouped by customerid
+  Benchmark: Repeat rate above 30% is considered healthy for B2B/reseller channels.
+
+3.5 Customer Revenue Concentration (Pareto Analysis)
+  Definition: What percentage of revenue comes from the top N% of customers.
+  Use case: If top 10% of customers generate more than 60% of revenue, the business
+    faces concentration risk.
+  Source tables: sales.salesorderheader, sales.salesorderdetail grouped by customerid.
+
+3.6 Average Orders per Customer
+  Definition: How many orders a customer places on average.
+  Formula: COUNT(salesorderid) / COUNT(DISTINCT customerid)
+  Source table: sales.salesorderheader
+  Segment by: Individual vs store customers, online vs offline.
+
+3.7 Customer Geographic Distribution
+  Definition: Where customers are located geographically.
+  Source tables: sales.customer (c), person.businessentityaddress (bea),
+    person.address (a), person.stateprovince (sp), person.countryregion (cr)
+  Joins: For individual customers, c.personid = bea.businessentityid.
+    For store customers, c.storeid = bea.businessentityid.
+    bea.addressid = a.addressid, a.stateprovinceid = sp.stateprovinceid,
+    sp.countryregioncode = cr.countryregioncode
+  Dimensions: city, stateprovince, countryregion.
+
+3.8 Store (Reseller) Performance
+  Definition: Revenue and order metrics for store/reseller customers.
+  Source tables: sales.customer (c), sales.store (s)
+  Join: c.storeid = s.businessentityid
+  Columns: s.name (store name), s.salespersonid (assigned rep), s.demographics (XML data).
+  Segment by: salesperson assignment, territory.
+
+3.9 Individual Customer Demographics
+  Definition: Demographic profile of individual (non-store) customers.
+  Source tables: sales.customer (c), person.person (p)
+  Join: c.personid = p.businessentityid
+  Columns: p.persontype (IN = Individual, SC = Store Contact, SP = Sales Person, etc.)
+  Note: Demographic XML in person.person.demographics can be parsed for income, education, etc.
+    The view sales.vpersondemographics provides pre-parsed fields.
+
+3.10 Shopping Cart Abandonment
+  Definition: Items added to shopping carts but never converted to orders.
+  Source table: sales.shoppingcartitem
+  Analysis: Compare shoppingcartitem entries with salesorderdetail to find unconverted items.
+  Columns: shoppingcartid, productid, quantity, datecreated.
+
+
+================================================================================
+4. PURCHASING & SUPPLY CHAIN KPIs
+================================================================================
+
+4.1 Total Purchase Spend
+  Definition: Total value of all purchase orders.
+  Formula: SUM(subtotal) from purchasing.purchaseorderheader
+  Alternative detail level: SUM(unitprice * orderqty) from purchasing.purchaseorderdetail
+  Granularity: Monthly, quarterly, yearly, by vendor.
+
+4.2 Purchase Order Volume
+  Definition: Number of purchase orders placed per period.
+  Formula: COUNT(DISTINCT purchaseorderid) from purchasing.purchaseorderheader
+  Segment by: vendor, employee (buyer), status.
+
+4.3 Purchase Order Status Distribution
+  Definition: Breakdown of POs by their current status.
+  Source table: purchasing.purchaseorderheader
+  Status values: 1 = Pending, 2 = Approved, 3 = Rejected, 4 = Complete.
+  Use case: Monitor procurement pipeline health.
+
+4.4 Vendor Lead Time
+  Definition: Average time from order to delivery by vendor.
+  Source table: purchasing.productvendor
+  Column: averageleadtime (in days)
+  Granularity: By vendor, by product.
+  Benchmark: Lead time above 30 days for critical components requires alternative sourcing.
+
+4.5 Vendor Rejected Quantity Rate
+  Definition: Quality metric — percentage of received goods rejected.
+  Formula: SUM(rejectedqty) / SUM(receivedqty) * 100 from purchasing.purchaseorderdetail
+  Grouped by: vendorid (from purchaseorderheader)
+  Benchmark: Rate above 5% in a rolling 12-month window triggers vendor quality review.
+
+4.6 Top Vendors by Spend
+  Definition: Vendors ranked by total purchasing spend.
+  Source tables: purchasing.purchaseorderheader (poh), purchasing.vendor (v)
+  Join: poh.vendorid = v.businessentityid
+  Columns: v.name, v.accountnumber, v.creditrating
+
+4.7 Vendor Credit Risk
+  Definition: Vendors flagged by their credit rating.
+  Source table: purchasing.vendor
+  Column: creditrating (1 = Superior, 2 = Excellent, 3 = Above Average,
+    4 = Average, 5 = Below Average)
+  Policy: Vendors with creditrating >= 4 require finance approval for new POs.
+
+4.8 Preferred Vendor Utilization
+  Definition: What percentage of spend goes to preferred vendors.
+  Source tables: purchasing.vendor (v), purchasing.purchaseorderheader (poh)
+  Filter: v.preferredvendorstatus = true
+  Benchmark: At least 70% of spend should go to preferred vendors.
+
+4.9 Freight Cost Ratio (Purchasing)
+  Definition: Shipping cost as a percentage of purchase subtotal.
+  Formula: SUM(freight) / SUM(subtotal) * 100 from purchasing.purchaseorderheader
+  Benchmark: Should stay below 5%.
+
+4.10 Product-Vendor Coverage
+  Definition: How many approved vendors supply each product.
+  Source table: purchasing.productvendor
+  Use case: Single-source products (only one vendor) represent supply chain risk.
+
+4.11 Purchase Price Variance
+  Definition: Difference between standard price and actual purchase price.
+  Source tables: purchasing.productvendor (standardprice), purchasing.purchaseorderdetail (unitprice)
+  Formula: AVG(pod.unitprice - pv.standardprice) per product per vendor
+  Use case: Identify cost overruns and negotiate better terms.
+
+4.12 Receiving Efficiency
+  Definition: How closely received quantities match ordered quantities.
+  Formula: SUM(receivedqty) / SUM(orderqty) * 100 from purchasing.purchaseorderdetail
+  Benchmark: Below 95% indicates supplier fulfillment issues.
+
+
+================================================================================
+5. HUMAN RESOURCES KPIs
+================================================================================
+
+5.1 Total Headcount
+  Definition: Number of active employees.
+  Formula: COUNT(*) from humanresources.employee WHERE currentflag = true
+  Granularity: By department, by job title, by gender, by shift.
+
+5.2 Employee Turnover Rate
+  Definition: Rate at which employees leave the organization.
+  Formula: Employees with enddate in humanresources.employeedepartmenthistory in a period
+    divided by average headcount in that period, multiplied by 100.
+  Note: An enddate in employeedepartmenthistory could mean a transfer (new record with
+    same businessentityid, different department) or a departure (no subsequent record).
+    True departures have currentflag = false in humanresources.employee.
+  Benchmark: Annual turnover above 15% is a concern.
+
+5.3 Average Employee Tenure
+  Definition: How long employees have been with the company.
+  Formula: AVG(latest_data_date - hiredate) for active employees (currentflag = true)
+  Source table: humanresources.employee
+  Note: Use MAX(orderdate) from salesorderheader as the reference date, not CURRENT_DATE.
+
+5.4 Department Headcount
+  Definition: Employee count per department.
+  Source tables: humanresources.employee (e), humanresources.employeedepartmenthistory (edh),
+    humanresources.department (d)
+  Joins: e.businessentityid = edh.businessentityid, edh.departmentid = d.departmentid
+  Filter: edh.enddate IS NULL (current department assignment) AND e.currentflag = true
+
+5.5 Department Group Distribution
+  Definition: Employee count grouped by department group.
+  Source table: humanresources.department
+  Column: groupname (Executive General and Administration, Inventory Management,
+    Manufacturing, Quality Assurance, Research and Development, Sales and Marketing).
+
+5.6 Pay Rate Analysis
+  Definition: Compensation metrics by department or job title.
+  Source tables: humanresources.employeepayhistory (eph), humanresources.employee (e),
+    humanresources.employeedepartmenthistory (edh), humanresources.department (d)
+  Current rate: The record in employeepayhistory with the most recent ratechangedate per employee.
+  Metrics: AVG(rate), MIN(rate), MAX(rate), PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rate) as median
+  Column: payfrequency (1 = monthly, 2 = biweekly)
+  Policy: NEVER show individual salaries — always aggregate by group of at least 5.
+
+5.7 Pay Rate Trend
+  Definition: How compensation has changed over time.
+  Source table: humanresources.employeepayhistory
+  Columns: businessentityid, ratechangedate, rate
+  Use case: Identify pay raises, compression issues, cost trends.
+
+5.8 Shift Distribution
+  Definition: Employee count per shift.
+  Source tables: humanresources.employeedepartmenthistory (edh), humanresources.shift (s)
+  Join: edh.shiftid = s.shiftid
+  Filter: edh.enddate IS NULL (current assignment)
+  Shifts: Day (starttime/endtime), Evening, Night.
+
+5.9 Vacation and Sick Leave Utilization
+  Definition: Average leave hours by department or job title.
+  Source table: humanresources.employee
+  Columns: vacationhours, sickleavehours
+  Benchmark: Average vacation usage below 40 hours/year may indicate employee burnout risk.
+    Sick leave above 60 hours/year per department warrants investigation.
+
+5.10 Salaried vs Hourly Workforce Mix
+  Definition: Breakdown of employees by compensation type.
+  Source table: humanresources.employee
+  Column: salariedflag (true = salaried, false = hourly)
+  Granularity: By department, by job title.
+
+5.11 Gender Distribution
+  Definition: Workforce gender composition.
+  Source table: humanresources.employee
+  Column: gender (M, F)
+  Policy: Always report as aggregated counts or percentages, never individual records.
+    Minimum group size of 5 for any demographic breakdown.
+
+5.12 Hiring Trend
+  Definition: Number of new hires per period.
+  Source table: humanresources.employee
+  Column: hiredate
+  Formula: COUNT(*) grouped by EXTRACT(YEAR FROM hiredate), EXTRACT(MONTH FROM hiredate)
+
+5.13 Job Title Distribution
+  Definition: Employee count by job title.
+  Source table: humanresources.employee
+  Column: jobtitle
+  Use case: Organizational structure analysis, span-of-control metrics.
+
+5.14 Organization Hierarchy Depth
+  Definition: Management layers in the organization.
+  Source table: humanresources.employee
+  Column: organizationnode (hierarchyid-like path string)
+  Use case: Org chart analysis, reporting line depth.
+
+
+================================================================================
+6. OPERATIONAL EFFICIENCY KPIs
+================================================================================
+
+6.1 Order Fulfillment Time
+  Definition: Average calendar days from order placement to shipment.
+  Formula: AVG(shipdate - orderdate) from sales.salesorderheader
+  Filter: Only shipped orders (shipdate IS NOT NULL)
+  Benchmark: Target is under 7 days. Above 14 days is critical.
+  Granularity: By territory, by shipping method, by period.
+
+6.2 On-Time Shipping Rate
+  Definition: Percentage of orders shipped on or before the due date.
+  Formula: COUNT(WHERE shipdate <= duedate) / COUNT(shipped orders) * 100
+  Source table: sales.salesorderheader
+  Benchmark: Target is 95%+. Below 90% triggers logistics review.
+
+6.3 Late Shipment Rate
+  Definition: Percentage of orders shipped after the due date.
+  Formula: COUNT(WHERE shipdate > duedate) / COUNT(shipped orders) * 100
+  Source table: sales.salesorderheader
+
+6.4 Order Revision Frequency
+  Definition: How often orders are revised after initial placement.
+  Source table: sales.salesorderheader
+  Column: revisionnumber
+  Benchmark: Orders with revisionnumber > 2 indicate process issues.
+
+6.5 Work Order Completion Rate
+  Definition: Percentage of manufacturing work orders completed on schedule.
+  Formula: COUNT(WHERE enddate IS NOT NULL) / COUNT(*) * 100
+  Source table: production.workorder
+  Granularity: Monthly, by product.
+
+6.6 Work Order Cycle Time
+  Definition: Average time to complete a manufacturing work order.
+  Formula: AVG(enddate - startdate) from production.workorder WHERE enddate IS NOT NULL
+  Benchmark: Compare to production.product.daystomanufacture for planned vs actual.
+
+6.7 Work Order Routing Efficiency
+  Definition: Actual vs planned costs and hours in manufacturing operations.
+  Source table: production.workorderrouting
+  Formulas:
+    Cost variance = SUM(actualcost - plannedcost)
+    Hours efficiency = SUM(actualresourcehrs) / expected hours by location
+  Granularity: By locationid (join to production.location for names), by product.
+
+6.8 Manufacturing Location Utilization
+  Definition: How busy each production location is.
+  Source tables: production.workorderrouting (wor), production.location (l)
+  Join: wor.locationid = l.locationid
+  Metrics: Total actual hours, total work orders, avg cost per work order.
+  Columns from location: name, costrate, availability.
+
+6.9 Tax Collection Rate
+  Definition: Effective tax rate on sales.
+  Formula: SUM(taxamt) / SUM(subtotal) * 100 from sales.salesorderheader
+  Granularity: By territory, by state/province.
+  Use case: Verify tax compliance across jurisdictions.
+
+6.10 Transaction Volume
+  Definition: Number of inventory transactions per period.
+  Source table: production.transactionhistory
+  Columns: transactionid, productid, transactiondate, transactiontype (W = Work Order,
+    S = Sales Order, P = Purchase Order), quantity, actualcost
+  Note: production.transactionhistoryarchive contains older records.
+    For full historical analysis, UNION both tables.
+
+6.11 Document Management
+  Definition: Internal document tracking metrics.
+  Source table: production.document
+  Columns: title, owner, status (1 = Pending, 2 = Approved, 3 = Obsolete),
+    folderflag, changenumber
+  Use case: Track documentation completeness and review cadence.
+
+
+================================================================================
+7. FINANCIAL KPIs
+================================================================================
+
+7.1 Total Due (Gross Order Value)
+  Definition: Total amount owed by customers including tax and freight.
+  Formula: SUM(totaldue) from sales.salesorderheader
+  Note: totaldue = subtotal + taxamt + freight. This is the cash collection target.
+
+7.2 Subtotal (Pre-Tax Revenue)
+  Definition: Total order value before tax and freight.
+  Formula: SUM(subtotal) from sales.salesorderheader
+  Note: subtotal is the header-level pre-tax total. For line-level detail, use
+    SUM(unitprice * orderqty * (1 - unitpricediscount)) from salesorderdetail.
+
+7.3 Effective Tax Rate by Region
+  Formula: SUM(taxamt) / SUM(subtotal) * 100
+  Source table: sales.salesorderheader
+  Grouped by: territoryid -> salesterritory
+  Cross-reference: sales.salestaxrate for statutory rates by stateprovinceid.
+
+7.4 Currency Exposure
+  Definition: Revenue breakdown by transaction currency.
+  Source tables: sales.salesorderheader (soh), sales.currencyrate (cr)
+  Join: soh.currencyrateid = cr.currencyrateid
+  Dimensions: cr.fromcurrencycode, cr.tocurrencycode, cr.averagerate, cr.endofdayrate
+  Risk: Large exposure to a single non-USD currency is a foreign exchange risk.
+
+7.5 Cost of Goods Sold (COGS)
+  Definition: Total standard cost of products sold.
+  Formula: SUM(p.standardcost * sod.orderqty) from sales.salesorderdetail sod
+    JOIN production.product p ON sod.productid = p.productid
+  Alternative: Use productcosthistory for time-accurate costs.
+
+7.6 Gross Profit
+  Definition: Revenue minus cost of goods sold.
+  Formula: Total Revenue (KPI 1.1) - COGS (KPI 7.5)
+
+7.7 Gross Profit Margin
+  Formula: Gross Profit / Total Revenue * 100
+  Benchmark: Company-wide target is 45%+.
+
+
+================================================================================
+8. CALCULATION NOTES & CONVENTIONS
+================================================================================
+
+8.1 Date Anchoring
+  The AdventureWorks database contains historical data spanning 2011-2014.
+  NEVER use CURRENT_DATE or NOW() as a time anchor — queries will return zero rows.
+  Always anchor to: (SELECT MAX(orderdate) FROM sales.salesorderheader)
+
+8.2 Fiscal Year
+  AdventureWorks fiscal year runs July 1 to June 30.
+  Q1 = Jul-Sep, Q2 = Oct-Dec, Q3 = Jan-Mar, Q4 = Apr-Jun.
+  To compute fiscal year: CASE WHEN EXTRACT(MONTH FROM date) >= 7
+    THEN EXTRACT(YEAR FROM date) + 1 ELSE EXTRACT(YEAR FROM date) END
+
+8.3 Currency
+  Base currency is USD. Non-USD transactions have currencyrateid populated on
+  salesorderheader, which links to sales.currencyrate for conversion rates.
+  The sales.currency table has the full currency list.
+
+8.4 Revenue Formula (Canonical)
+  unitprice * orderqty * (1 - unitpricediscount)
+  Always derive from salesorderdetail. Never assume a pre-calculated column exists.
+
+8.5 Active vs Inactive Entities
+  Active employees: humanresources.employee.currentflag = true
+  Active vendors: purchasing.vendor.activeflag = true
+  Active products: production.product.discontinueddate IS NULL
+  Current department: humanresources.employeedepartmenthistory.enddate IS NULL
+
+8.6 Primary Key Conventions
+  businessentityid is the universal identifier for people, stores, vendors, and employees.
+  It comes from person.businessentity and links to person.person, humanresources.employee,
+  purchasing.vendor, and sales.store.
+  customerid (from sales.customer) is separate — it links to personid or storeid.
+
+8.7 Rounding
+  All monetary values in final reports should be rounded to 2 decimal places.
+  Use ROUND(value, 2) in SQL.
+
+8.8 INTERVAL Syntax
+  PostgreSQL requires: INTERVAL '12 months' (number and unit inside ONE quoted string).
+  Never write: INTERVAL '12' MONTHS (this is invalid).

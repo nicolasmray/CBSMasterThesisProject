@@ -24,15 +24,16 @@ def get_engine():
 
 
 def init_pgvector():
-    """Enable the pgvector extension and create the documents table with HNSW index.
+    """Enable the pgvector extension and create the rag_chunks table with HNSW index.
 
     This is idempotent — safe to call on every startup.
+    Uses 'rag_chunks' to avoid collision with the AdventureWorks 'documents' table.
     """
     engine = get_engine()
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS documents (
+            CREATE TABLE IF NOT EXISTS rag_chunks (
                 id SERIAL PRIMARY KEY,
                 content TEXT,
                 metadata JSONB,
@@ -40,7 +41,7 @@ def init_pgvector():
             )
         """))
         conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS documents_embedding_idx
-            ON documents USING hnsw (embedding vector_cosine_ops)
+            CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx
+            ON rag_chunks USING hnsw (embedding vector_cosine_ops)
         """))
         conn.commit()

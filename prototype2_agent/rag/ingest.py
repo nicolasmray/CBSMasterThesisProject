@@ -1,14 +1,13 @@
-"""RAG document ingestion script.
+"""RAG document ingestion.
 
-Accepts a file path (PDF or plain text) as a CLI argument, chunks the document,
-embeds each chunk via Ollama bge-large-en-v1.5, and stores them in pgvector
-through the MCP server's embed_and_store tool.
-
-Usage:
-    python -m rag.ingest <file_path>
+Provides two entry points:
+  1. CLI:  python -m rag.ingest <file_path>       — ingest a single file via MCP.
+  2. API:  ingest_knowledge_base()                 — called by main.py on startup.
+           Scans knowledge_base/ for new files, embeds them directly (no MCP).
 """
 
 import asyncio
+import json
 import os
 import sys
 
@@ -19,8 +18,12 @@ from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+from sqlalchemy import text
 
 from mcp_client import get_server_params, call_tool
+
+KNOWLEDGE_BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "knowledge_base")
+SUPPORTED_EXTENSIONS = {".txt", ".pdf", ".md"}
 
 
 class _MCPSession:
@@ -38,14 +41,7 @@ class _MCPSession:
 
 
 def load_documents(file_path: str):
-    """Load documents from a file path using the appropriate LangChain loader.
-
-    Args:
-        file_path: Path to a PDF or text file.
-
-    Returns:
-        List of LangChain Document objects.
-    """
+    """Load documents from a file path using the appropriate LangChain loader."""
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
         loader = PyPDFLoader(file_path)
@@ -55,14 +51,7 @@ def load_documents(file_path: str):
 
 
 def chunk_documents(docs) -> list:
-    """Split documents into chunks suitable for bge-large-en-v1.5.
-
-    Args:
-        docs: List of LangChain Document objects.
-
-    Returns:
-        List of chunked Document objects.
-    """
+    """Split documents into chunks suitable for bge-large-en-v1.5."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=400,
         chunk_overlap=60,
@@ -70,12 +59,80 @@ def chunk_documents(docs) -> list:
     return splitter.split_documents(docs)
 
 
-async def ingest_file(file_path: str):
-    """Load, chunk, and store a document via the MCP embed_and_store tool.
+# ── Startup auto-ingest (direct, no MCP) ─────────────────────────────────────
 
-    Args:
-        file_path: Path to the source file.
+def _get_ingested_sources() -> set[str]:
+    """Query the documents table for all distinct source filenames already ingested."""
+    from db.connection import get_engine
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT DISTINCT metadata->>'source' FROM rag_chunks WHERE metadata->>'source' IS NOT NULL")
+        ).fetchall()
+    return {row[0] for row in rows}
+
+
+def ingest_knowledge_base():
+    """Scan knowledge_base/ and embed any files not yet in the documents table.
+
+    Calls embed_and_store directly (no MCP subprocess) for speed.
     """
+    if not os.path.isdir(KNOWLEDGE_BASE_DIR):
+        print("  No knowledge_base/ directory found — skipping.")
+        return
+
+    # Collect candidate files
+    candidates = []
+    for fname in sorted(os.listdir(KNOWLEDGE_BASE_DIR)):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in SUPPORTED_EXTENSIONS:
+            candidates.append(fname)
+
+    if not candidates:
+        print("  No supported files in knowledge_base/ — skipping.")
+        return
+
+    # Check which files are already ingested
+    try:
+        already_ingested = _get_ingested_sources()
+    except Exception:
+        already_ingested = set()
+
+    new_files = [f for f in candidates if f not in already_ingested]
+
+    if not new_files:
+        print(f"  All {len(candidates)} knowledge base file(s) already ingested.")
+        return
+
+    # Lazy import — only needed when we actually embed
+    from mcp_server.tools.rag_tools import embed_and_store
+
+    for fname in new_files:
+        file_path = os.path.join(KNOWLEDGE_BASE_DIR, fname)
+        print(f"  Ingesting {fname}...")
+
+        docs = load_documents(file_path)
+        chunks = chunk_documents(docs)
+        print(f"    {len(chunks)} chunks to embed.")
+
+        for i, chunk in enumerate(chunks):
+            metadata = {
+                "source": fname,
+                "chunk_index": i,
+                **(chunk.metadata if hasattr(chunk, "metadata") else {}),
+            }
+            embed_and_store(chunk.page_content, metadata)
+
+        print(f"    Done ({len(chunks)} chunks stored).")
+
+    print(f"  Ingested {len(new_files)} new file(s).")
+
+
+# ── CLI single-file ingest (via MCP) ─────────────────────────────────────────
+
+async def ingest_file(file_path: str):
+    """Load, chunk, and store a document via the MCP embed_and_store tool."""
     print(f"Loading {file_path}...")
     docs = load_documents(file_path)
     print(f"Loaded {len(docs)} page(s)/section(s).")

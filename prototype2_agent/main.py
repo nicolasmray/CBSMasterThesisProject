@@ -40,7 +40,17 @@ def main():
     except Exception as e:
         print(f"Warning: Schema snapshot failed: {e}")
 
-    # 3. Launch Streamlit UI
+    # 3. Ingest new knowledge base documents (skips already-ingested files)
+    print("Checking knowledge base for new documents...")
+    from rag.ingest import ingest_knowledge_base
+
+    try:
+        ingest_knowledge_base()
+    except Exception as e:
+        print(f"Warning: Knowledge base ingestion failed: {e}")
+        print("RAG features may be limited. Ensure Ollama is running with bge-large-en-v1.5.")
+
+    # 4. Launch Streamlit UI
     print("Launching Streamlit UI...")
     ui_path = os.path.join(project_root, "ui", "app.py")
     subprocess.run(

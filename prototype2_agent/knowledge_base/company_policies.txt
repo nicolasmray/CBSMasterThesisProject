@@ -1,0 +1,587 @@
+AdventureWorks Corporate Policies & Compliance Guidelines
+==========================================================
+
+This document defines all corporate policies, compliance requirements, data governance
+rules, and operational standards for AdventureWorks Cycles. These policies apply to all
+automated reports, dashboards, ad-hoc analyses, and data exports produced by the BI system.
+Violation of these policies may result in audit findings or regulatory penalties.
+
+
+================================================================================
+1. DATA ACCESS & PRIVACY (PII PROTECTION)
+================================================================================
+
+1.1 Personally Identifiable Information (PII) Classification
+  The following database fields contain PII and are subject to access restrictions:
+
+  HIGH SENSITIVITY (never expose in reports):
+  - person.password: passwordhash, passwordsalt
+  - humanresources.employee: nationalidnumber
+
+  MEDIUM SENSITIVITY (aggregate only, minimum group size 5):
+  - person.person: firstname, middlename, lastname, suffix, title
+  - person.emailaddress: emailaddress
+  - person.personphone: phonenumber
+  - person.address: addressline1, addressline2, city, postalcode
+  - humanresources.employee: loginid, birthdate, gender, maritalstatus
+
+  LOW SENSITIVITY (permitted in internal reports with justification):
+  - person.person: persontype, emailpromotion
+  - person.businessentity: businessentityid (identifier only, no PII by itself)
+  - humanresources.employee: jobtitle, hiredate, currentflag
+
+1.2 PII Access Rules
+  - NEVER return passwordhash or passwordsalt in any query result under any circumstances.
+  - NEVER return nationalidnumber in any report or export.
+  - Individual names (firstname, lastname) may appear in internal operational reports
+    (e.g., salesperson performance) but must be removed from any externally shared report.
+  - Email addresses and phone numbers require business justification and must not be
+    included in bulk exports exceeding 100 records without data governance approval.
+  - Employee home addresses are NEVER included in reports. Person addresses may only appear
+    in customer-facing contexts (shipping, billing) and internal logistics reports.
+
+1.3 Minimum Aggregation Group Size
+  Any report that breaks down data by a demographic dimension (gender, marital status,
+  birth year, etc.) must ensure each group contains at least 5 individuals.
+  If a group has fewer than 5 members, it must be combined with adjacent groups or
+  suppressed and labeled "Other" to prevent re-identification.
+
+1.4 Data Masking Requirements
+  When PII must appear in development or testing environments:
+  - Email addresses: mask as f***@domain.com
+  - Phone numbers: show only last 4 digits
+  - Names: use initials only (e.g., J.S.)
+  - Addresses: show only city and state, redact street addresses
+
+1.5 Cross-Reference Restrictions
+  Queries must not join person.password with any other table in a result set.
+  Salary data (humanresources.employeepayhistory.rate) must never be joined with
+  person.person name fields in the same output — aggregate by department or job title instead.
+
+
+================================================================================
+2. FINANCIAL REPORTING STANDARDS
+================================================================================
+
+2.1 Revenue Definition (Canonical)
+  Revenue is ALWAYS calculated as:
+    unitprice * orderqty * (1 - unitpricediscount)
+  from sales.salesorderdetail.
+
+  The following are NOT revenue:
+  - salesorderheader.subtotal: this is a header-level pre-calculated field and may
+    differ slightly due to rounding. Use line-level calculation for precision.
+  - salesorderheader.totaldue: this INCLUDES tax and freight. Only use when the
+    report explicitly asks for "total due" or "gross order value."
+  - salesorderheader.taxamt: report separately as "Tax Collected."
+  - salesorderheader.freight: report separately as "Freight/Shipping Cost."
+
+2.2 Tax and Freight Separation
+  Tax (taxamt) and freight MUST be reported as separate line items in financial reports.
+  They are NEVER included in "revenue" or "sales" figures unless the metric is
+  explicitly labeled "Total Due" or "Gross Order Value."
+  For internal management reports: Revenue + Tax + Freight = Total Due.
+
+2.3 Fiscal Year Calendar
+  AdventureWorks operates on a July-June fiscal year:
+  - Fiscal Year Start: July 1
+  - Fiscal Year End: June 30
+  - Q1: July 1 - September 30
+  - Q2: October 1 - December 31
+  - Q3: January 1 - March 31
+  - Q4: April 1 - June 30
+
+  Fiscal year number: If the calendar month is >= July, the fiscal year is
+  calendar_year + 1. Example: October 2013 is FY2014 Q2.
+
+  SQL: CASE WHEN EXTRACT(MONTH FROM date) >= 7
+         THEN EXTRACT(YEAR FROM date) + 1
+         ELSE EXTRACT(YEAR FROM date) END AS fiscal_year
+
+2.4 Currency Handling
+  - Base reporting currency: USD (United States Dollar).
+  - Orders with salesorderheader.currencyrateid IS NULL are in USD.
+  - Orders with currencyrateid populated must be converted using sales.currencyrate.
+  - For multi-currency reports, always show both local currency amount and USD equivalent.
+  - Exchange rate: use endofdayrate from sales.currencyrate for closing positions,
+    averagerate for period averages.
+  - Currency codes are in sales.currency (3-character ISO codes).
+
+2.5 Rounding Rules
+  - All monetary values: ROUND to 2 decimal places in final output.
+  - Percentages: ROUND to 1 decimal place (e.g., 45.3%).
+  - Quantities: always integers, no rounding needed.
+  - Rates (pay rate, tax rate): ROUND to 4 decimal places for accuracy.
+
+2.6 Period Comparisons
+  When computing period-over-period metrics (MoM, QoQ, YoY):
+  - NEVER use CURRENT_DATE or NOW() — the data is historical (2011-2014).
+  - Always anchor to MAX(orderdate) from sales.salesorderheader.
+  - Use DATE_TRUNC for clean period boundaries.
+  - Always include both lower and upper bounds in WHERE clauses.
+  - INTERVAL syntax: always INTERVAL '12 months' (not INTERVAL '12' MONTHS).
+
+2.7 Order Status Definitions
+  Sales orders (sales.salesorderheader.status):
+  - 1 = In Process
+  - 2 = Approved
+  - 3 = Backordered
+  - 4 = Rejected
+  - 5 = Shipped
+  - 6 = Cancelled
+  Revenue reports should only include status = 5 (Shipped) unless explicitly asked
+  for pipeline or backlog analysis.
+
+  Purchase orders (purchasing.purchaseorderheader.status):
+  - 1 = Pending
+  - 2 = Approved
+  - 3 = Rejected
+  - 4 = Complete
+  Spend reports should only include status = 4 (Complete) for confirmed expenditures.
+
+2.8 Credit Card Data Handling
+  - sales.creditcard.cardnumber: this field exists in the database but must NEVER be
+    displayed in full in any report or export.
+  - For analytics purposes, use only cc.cardtype (Vista, SuperiorCard, ColonialVoice,
+    Distinguish) as a dimension.
+  - PCI-DSS compliance: card numbers must be masked if ever displayed (show last 4 only).
+
+
+================================================================================
+3. SALES TERRITORY GOVERNANCE
+================================================================================
+
+3.1 Territory Assignment Authority
+  - The territory on salesorderheader.territoryid is the authoritative territory for
+    that order, regardless of the salesperson's current territory assignment.
+  - A salesperson's current territory is in sales.salesperson.territoryid.
+  - Territory changes are logged in sales.salesterritoryhistory with startdate/enddate.
+
+3.2 Territory Hierarchy
+  - Level 1 (Region Group): sales.salesterritory.group — North America, Europe, Pacific.
+  - Level 2 (Territory): sales.salesterritory.name — e.g., Northwest, Canada, Germany.
+  - Level 3 (Country): sales.salesterritory.countryregioncode — e.g., US, CA, DE, AU.
+
+  Executive dashboards must default to Level 1 (Region Group) aggregation.
+  Drill-down to Level 2 and Level 3 is permitted for authorized users.
+
+3.3 Territory Performance Metrics
+  Each territory tracks: salesytd, saleslastyear, costytd, costlastyear in sales.salesterritory.
+  These are running totals updated by the system. For historical analysis, compute from
+  salesorderheader/salesorderdetail directly.
+
+3.4 Cross-Territory Attribution
+  When a salesperson transfers territories mid-period:
+  - Historical orders retain their original territoryid.
+  - Performance reports for "Territory X" include all orders with territoryid = X,
+    regardless of which salesperson handled them.
+  - Performance reports for "Salesperson Y" include all orders where salespersonid = Y,
+    regardless of territory.
+
+3.5 Territory-Based Access Control
+  Sales managers may view detailed data only for their assigned territory.
+  Cross-territory data requires VP-level or executive access.
+  Exception: Aggregate (territory-level totals) views are available to all sales managers
+  for competitive benchmarking purposes.
+
+
+================================================================================
+4. PURCHASING & VENDOR COMPLIANCE
+================================================================================
+
+4.1 Vendor Classification
+  Vendors are classified by their creditrating in purchasing.vendor:
+  - 1 = Superior: No restrictions, preferred for strategic sourcing.
+  - 2 = Excellent: Standard procurement process.
+  - 3 = Above Average: Standard procurement process.
+  - 4 = Average: Requires finance department approval for POs exceeding $10,000.
+  - 5 = Below Average: Requires VP approval for any new PO. Subject to quarterly review.
+
+4.2 Preferred Vendor Policy
+  - Vendors with preferredvendorstatus = true must be prioritized in sourcing decisions.
+  - When multiple vendors supply the same product (purchasing.productvendor), the preferred
+    vendor must be selected unless their price exceeds the non-preferred vendor by more than 15%.
+  - Preferred vendor status is reviewed annually based on delivery performance, quality, and pricing.
+
+4.3 Inactive Vendor Policy
+  - Vendors with activeflag = false in purchasing.vendor must NOT receive new purchase orders.
+  - Existing open POs with inactive vendors must be reviewed within 30 days and either
+    completed or transferred to an active vendor.
+  - Reactivation requires quality audit and finance approval.
+
+4.4 Quality Thresholds
+  - Rejected quantity threshold: If SUM(rejectedqty) / SUM(receivedqty) exceeds 5% for
+    any vendor in a rolling 12-month window, the vendor must be flagged for quality review.
+  - Critical threshold: If the rejection rate exceeds 10%, the vendor must be suspended
+    pending a formal quality audit.
+  - Zero-tolerance items: Components used in safety-critical products (identified by
+    productsubcategory = 'Brakes', 'Forks', 'Frames') have a 2% rejection threshold.
+
+4.5 Purchase Price Controls
+  - Standard price for each product-vendor combination is in purchasing.productvendor.standardprice.
+  - Actual order price is in purchasing.purchaseorderdetail.unitprice.
+  - Price variance (actual - standard) exceeding 10% requires procurement manager justification.
+  - Price variance exceeding 20% requires VP approval.
+
+4.6 Receiving Requirements
+  - All purchase order details track: orderqty, receivedqty, rejectedqty.
+  - Receiving ratio (receivedqty / orderqty) below 95% triggers a fulfillment investigation.
+  - Short shipments must be documented and the vendor notified within 5 business days.
+
+4.7 Freight and Shipping (Purchasing)
+  - Shipping method for purchase orders: purchasing.purchaseorderheader.shipmethodid
+    links to purchasing.shipmethod.
+  - Freight costs: purchasing.purchaseorderheader.freight.
+  - Ship methods have shipbase (fixed cost) and shiprate (per-unit cost).
+  - Freight-to-subtotal ratio above 5% for any vendor triggers logistics review.
+
+4.8 Single-Source Risk
+  - Products supplied by only one vendor (single entry in purchasing.productvendor for
+    a given productid) are flagged as single-source risk items.
+  - Procurement must identify alternative vendors for all single-source products with
+    annual spend exceeding $50,000.
+
+
+================================================================================
+5. HUMAN RESOURCES POLICIES
+================================================================================
+
+5.1 Compensation Confidentiality
+  - Individual pay rates (humanresources.employeepayhistory.rate) are strictly confidential.
+  - Reports must aggregate compensation data by department, job title, or pay frequency.
+  - Minimum group size for any compensation report: 5 employees.
+  - Pay rate combined with name or employee ID is NEVER permitted in any output.
+  - Exception: HR department authorized users may access individual compensation for
+    payroll processing and audit purposes only.
+
+5.2 Pay Frequency Standards
+  - humanresources.employeepayhistory.payfrequency values:
+    1 = Monthly (salaried employees, typically salariedflag = true)
+    2 = Biweekly (hourly employees, typically salariedflag = false)
+  - When computing annual compensation:
+    Monthly: rate * 12 (if monthly rate) or rate * 2080 (if hourly rate, 40hr/week)
+    Biweekly: rate * 26 (if biweekly rate) or rate * 2080 (if hourly rate)
+  - Always verify salariedflag to determine correct annualization.
+
+5.3 Department Assignment Rules
+  - Current department: the record in humanresources.employeedepartmenthistory where
+    enddate IS NULL.
+  - Historical department: records where enddate IS NOT NULL.
+  - An employee may appear in multiple rows — each representing a department change.
+  - Department transfer = new record with new departmentid, old record gets enddate set.
+  - Departure = employee's currentflag becomes false in humanresources.employee.
+
+5.4 Shift Assignment
+  - Employees are assigned to shifts via humanresources.employeedepartmenthistory.shiftid.
+  - Shift definitions in humanresources.shift: name, starttime, endtime.
+  - Standard shifts: Day, Evening, Night.
+  - Shift changes follow the same pattern as department changes in employeedepartmenthistory.
+
+5.5 Organization Hierarchy
+  - humanresources.employee.organizationnode defines the reporting structure.
+  - The root node (shortest organizationnode) is the CEO.
+  - Depth can be computed by counting separators in the organizationnode string.
+  - Direct reports: employees whose organizationnode starts with a manager's node and
+    has exactly one additional level.
+  - Span of control: COUNT of direct reports per manager.
+
+5.6 Leave Management
+  - Vacation hours and sick leave hours are tracked in humanresources.employee.
+  - Maximum vacation accrual: salaried employees accrue up to 80 hours/year,
+    hourly employees accrue up to 40 hours/year.
+  - Maximum sick leave accrual: 60 hours/year for all employees.
+  - Departments with average vacation balance above 60 hours should encourage time-off usage.
+  - Departments with average sick leave above 40 hours warrant wellness program review.
+
+5.7 Hiring and Onboarding
+  - New hire date is humanresources.employee.hiredate.
+  - New hires should appear in their department within 5 business days (employeedepartmenthistory).
+  - Probation period: first 90 days from hiredate.
+  - Reports on "new hires" should filter by hiredate within the specified period.
+
+5.8 Employee Demographics Reporting
+  - Gender (humanresources.employee.gender): report as M/F counts or percentages.
+  - Marital status (maritalstatus): S = Single, M = Married.
+  - Birth date: use for age-range analysis only. Never report individual birth dates.
+    Age ranges: Under 25, 25-34, 35-44, 45-54, 55-64, 65+.
+  - All demographic breakdowns must respect the minimum group size of 5.
+
+5.9 Job Candidate Data
+  - humanresources.jobcandidate tracks applicant information.
+  - Resume data is stored as XML in the resume column.
+  - Parsed views: humanresources.vjobcandidate, vjobcandidateeducation, vjobcandidateemployment.
+  - Candidate data is subject to data retention policies — records older than 2 years
+    from application date should be anonymized unless the candidate was hired.
+
+
+================================================================================
+6. PRODUCT & INVENTORY MANAGEMENT STANDARDS
+================================================================================
+
+6.1 Product Lifecycle States
+  A product's lifecycle state is determined by these fields in production.product:
+  - Active for sale: sellstartdate <= data_date AND (sellenddate IS NULL OR sellenddate > data_date)
+    AND discontinueddate IS NULL
+  - End of sale: sellenddate IS NOT NULL AND sellenddate <= data_date AND discontinueddate IS NULL
+  - Discontinued: discontinueddate IS NOT NULL
+  - Not yet released: sellstartdate > data_date
+
+  "Current product" reports must only include Active for sale products.
+  "Full catalog" reports may include all states with a status column.
+
+6.2 Product Classification Hierarchy
+  - Level 1: production.productcategory.name — Bikes, Components, Clothing, Accessories
+  - Level 2: production.productsubcategory.name — e.g., Mountain Bikes, Road Bikes, Jerseys
+  - Level 3: production.product.name — individual product
+  Joins: product.productsubcategoryid -> productsubcategory.productsubcategoryid
+         productsubcategory.productcategoryid -> productcategory.productcategoryid
+  Note: Some products have productsubcategoryid IS NULL — these are unclassified.
+
+6.3 Product Line and Style
+  production.product additional dimensions:
+  - productline: R = Road, M = Mountain, T = Touring, S = Standard
+  - class: H = High, M = Medium, L = Low
+  - style: W = Women's, M = Men's, U = Universal
+  These may be NULL for components and accessories.
+
+6.4 Make vs Buy Classification
+  - production.product.makeflag:
+    true = Manufactured in-house (has work orders in production.workorder)
+    false = Purchased from external vendor (has entries in purchasing.productvendor)
+  - Cost analysis must segment by this flag.
+  - Manufactured products use standardcost from production.product (or productcosthistory
+    for time-accurate costs).
+  - Purchased products cost = purchasing.productvendor.standardprice (or actual PO price).
+
+6.5 Inventory Control Thresholds
+  For each product in production.product:
+  - safetystocklevel: minimum inventory to maintain. Below this triggers an ALERT.
+  - reorderpoint: inventory level at which a new purchase order should be placed.
+  Both are compared against SUM(quantity) from production.productinventory grouped by productid.
+
+6.6 Inventory Location Management
+  - production.productinventory tracks stock by: productid, locationid, shelf, bin.
+  - production.location defines manufacturing/storage locations with costrate and availability.
+  - Shelf = alphanumeric shelf identifier, Bin = numeric bin within shelf.
+  - Total inventory for a product = SUM(quantity) across all locations.
+
+6.7 Bill of Materials (BOM)
+  - production.billofmaterials defines the component structure for assembled products.
+  - productassemblyid = the parent/assembled product (NULL for top-level purchased components)
+  - componentid = the child/part product
+  - bomlevel = depth in the assembly tree (0 = top, 1 = first-level component, etc.)
+  - startdate/enddate = effective dates for the BOM relationship
+  - Current BOM: enddate IS NULL
+  - unitmeasurecode = unit of measure for the component, perassemblyqty = quantity needed.
+
+6.8 Product Photos and Documentation
+  - Product photos: production.productphoto linked via production.productproductphoto.
+  - Primary photo: productproductphoto.primary = true.
+  - Product models: production.productmodel with catalog descriptions (XML) and instructions (XML).
+  - Descriptions by culture/language: production.productmodelproductdescriptionculture
+    links productmodel, productdescription, and culture.
+  - Products without photos or descriptions should be flagged for marketing content completion.
+
+6.9 Scrap and Waste Management
+  - Scrap reasons: production.scrapreason (scrapreasonid, name).
+  - Work order scrap: production.workorder.scrappedqty with scrapreasonid.
+  - Scrap rate threshold: > 3% by product triggers manufacturing process review.
+  - Scrap rate threshold: > 5% by scrap reason triggers root cause analysis.
+  - Monthly scrap reports must include: product, scrap reason, scrapped quantity,
+    scrap rate, and estimated cost impact (scrappedqty * standardcost).
+
+6.10 Unit of Measure Standards
+  - production.unitmeasure: unitmeasurecode (e.g., EA = Each, LB = Pound, IN = Inch).
+  - Products have sizeunitmeasurecode and weightunitmeasurecode.
+  - BOM components use unitmeasurecode for assembly quantities.
+  - Reports must always display the unit of measure alongside any size/weight values.
+
+
+================================================================================
+7. DATA RETENTION, ARCHIVAL & INTEGRITY
+================================================================================
+
+7.1 Transaction Data Retention
+  - Active transactions: production.transactionhistory
+  - Archived transactions: production.transactionhistoryarchive
+  - Retention rule: Transactions older than 5 years from the latest transaction date
+    are moved to the archive table.
+  - Active analysis should query production.transactionhistory.
+  - Full historical analysis must UNION both tables:
+    SELECT * FROM production.transactionhistory
+    UNION ALL
+    SELECT * FROM production.transactionhistoryarchive
+
+7.2 Transaction Types
+  Both transactionhistory and transactionhistoryarchive use:
+  - transactiontype: W = Work Order, S = Sales Order, P = Purchase Order
+  - referenceorderid: links to the originating order
+  - referenceorderlineid: links to the specific line item
+
+7.3 Archive Modification Policy
+  - Archived records must NOT be modified or deleted without DBA approval.
+  - Archive table indexes mirror active table indexes for query consistency.
+  - Any reports comparing archived vs active data must document the data source.
+
+7.4 Data Integrity Rules
+  - All monetary fields must be non-negative (unitprice >= 0, orderqty >= 0, rate >= 0).
+  - Dates must be logically consistent: startdate <= enddate, hiredate <= termination date,
+    orderdate <= duedate <= shipdate (for normal flow).
+  - Foreign key relationships must be respected — never assume an ID exists without verification.
+  - rowguid fields are system-generated unique identifiers — never modify or use for joins
+    (use the business key columns instead).
+
+7.5 modifieddate Convention
+  Nearly every table has a modifieddate column. This tracks the last modification timestamp
+  for the row. It should NOT be used as a business event date. Always use the domain-specific
+  date column (orderdate, hiredate, ratechangedate, etc.) for business analysis.
+
+7.6 Audit Trail
+  Changes to sensitive data (employee records, vendor status, product pricing) should be
+  traceable through history tables:
+  - Employee department changes: humanresources.employeedepartmenthistory
+  - Employee pay changes: humanresources.employeepayhistory
+  - Product cost changes: production.productcosthistory
+  - Product price changes: production.productlistpricehistory
+  - Territory reassignments: sales.salesterritoryhistory
+  - Salesperson quota changes: sales.salespersonquotahistory
+
+
+================================================================================
+8. REPORT DISTRIBUTION & ACCESS CONTROL
+================================================================================
+
+8.1 Report Classification Levels
+  - PUBLIC: Aggregated company-level metrics. May be shared externally.
+    No PII, no individual records. Territory-group level or higher aggregation.
+  - INTERNAL: Department and territory-level details. Available to all employees.
+    May include territory names, department names, product details.
+  - RESTRICTED: Individual salesperson performance, customer details, vendor terms.
+    Available only to direct managers and authorized stakeholders.
+  - CONFIDENTIAL: Compensation data, employee demographics, credit card details.
+    Available only to HR, Finance, and executive leadership.
+
+8.2 Executive Dashboard Standards
+  Executive dashboards must show:
+  - Territory-group level aggregates (North America, Europe, Pacific)
+  - No individual customer, employee, or salesperson data
+  - Fiscal year and quarter context
+  - Trend indicators (MoM, QoQ, YoY)
+  - Benchmark comparisons against targets
+
+8.3 Department Reports
+  - Department heads may view aggregated metrics for their department only.
+  - Cross-department comparisons require VP-level access.
+  - Employee-level data within a department requires HR authorization.
+
+8.4 Sales Reports
+  - Individual salesperson performance is visible only to:
+    a) The salesperson themselves
+    b) Their direct manager (via organizationnode hierarchy)
+    c) VP of Sales and above
+  - Territory-level summaries are available to all sales managers.
+  - Customer-level detail (by name) is available to the assigned salesperson and their manager.
+
+8.5 External Report Requirements
+  Reports shared with external parties (investors, auditors, regulators) must:
+  - Exclude ALL PII
+  - Use only aggregated, anonymized data
+  - Include data source and period disclaimers
+  - Be reviewed by Finance before distribution
+  - Follow the fiscal year calendar (Section 2.3)
+
+8.6 Automated Report Schedules
+  - Daily: Inventory alerts (below safety stock, below reorder point)
+  - Weekly: Sales pipeline (in-process orders), vendor quality summary
+  - Monthly: Full financial summary, territory performance, HR headcount
+  - Quarterly: Executive KPI dashboard, vendor compliance review, product lifecycle review
+  - Annually: Full year financial statements, workforce demographics, vendor re-evaluation
+
+
+================================================================================
+9. CUSTOMER DATA GOVERNANCE
+================================================================================
+
+9.1 Customer Types
+  - Individual customers: sales.customer.personid IS NOT NULL, storeid IS NULL
+  - Store/reseller customers: sales.customer.storeid IS NOT NULL
+  - Some customers may have both personid and storeid (contact at a store).
+  - Person type codes in person.person.persontype:
+    SC = Store Contact, IN = Individual (Retail) Customer,
+    SP = Sales Person, EM = Employee, VC = Vendor Contact, GC = General Contact
+
+9.2 Customer Communication Preferences
+  - person.person.emailpromotion indicates opt-in level:
+    0 = No email promotions
+    1 = From AdventureWorks only
+    2 = From AdventureWorks and selected partners
+  - Marketing campaigns must respect these preferences.
+  - Bulk email lists must filter by emailpromotion >= 1.
+
+9.3 Customer Address Usage
+  - Addresses are linked via person.businessentityaddress with an addresstypeid.
+  - Address types from person.addresstype: Billing, Home, Main Office, Primary, Shipping, Archive.
+  - Shipping analysis should use addresstypeid for "Shipping" addresses.
+  - Billing analysis should use addresstypeid for "Billing" addresses.
+  - salesorderheader.billtoaddressid and shiptoaddressid directly reference person.address.
+
+9.4 Customer Demographics
+  - Individual customer demographics are stored as XML in person.person.demographics.
+  - Pre-parsed view: sales.vpersondemographics provides:
+    totalpurchaseytd, datefirstpurchase, birthdate, maritalstatus, yearlyincome,
+    gender, totalchildren, numberchildrenathome, education, occupation,
+    homeownerflag, numbercarsowned.
+  - Store demographics are in sales.store.demographics (XML).
+  - Pre-parsed view: sales.vstorewithdemographics provides:
+    AnnualSales, AnnualRevenue, BankName, BusinessType, YearOpened, Specialty,
+    SquareFeet, Brands, Internet, NumberEmployees.
+
+
+================================================================================
+10. DATA QUALITY STANDARDS
+================================================================================
+
+10.1 NULL Handling Rules
+  - NULL in optional fields (middlename, addressline2, suffix) is expected and valid.
+  - NULL in required fields (firstname, lastname, orderdate) indicates a data quality issue.
+  - Reports should use COALESCE for optional display fields:
+    COALESCE(middlename, '') or COALESCE(addressline2, 'N/A').
+  - Aggregation functions (SUM, AVG, COUNT) automatically skip NULLs. Be aware that
+    COUNT(*) includes NULL rows but COUNT(column) excludes them.
+
+10.2 Duplicate Detection
+  - Each entity has a rowguid column for system-level uniqueness.
+  - Business-level duplicates should be detected by matching on business keys:
+    Customers: personid + storeid combination
+    Products: productnumber (unique)
+    Vendors: accountnumber (unique)
+    Employees: nationalidnumber (unique)
+
+10.3 Referential Integrity
+  - All foreign key columns should reference existing parent records.
+  - When a query returns unexpected NULLs after a JOIN, check whether it should
+    be an INNER JOIN (exclude orphans) or LEFT JOIN (include orphans as NULL).
+  - salesorderheader.salespersonid may be NULL for online direct orders — this is valid.
+  - salesorderheader.currencyrateid may be NULL for USD orders — this is valid.
+
+10.4 Date Consistency
+  Expected date ordering for sales: orderdate <= duedate, orderdate <= shipdate.
+  Expected date ordering for work orders: startdate <= enddate <= duedate (ideally).
+  Expected date ordering for employment: hiredate <= all employeedepartmenthistory.startdate.
+  Any violations of these orderings should be flagged as data quality issues, not silently ignored.
+
+10.5 View Usage
+  The database contains pre-built views (prefixed with 'v'):
+  - humanresources.vemployee, vemployeedepartment, vemployeedepartmenthistory
+  - humanresources.vjobcandidate, vjobcandidateeducation, vjobcandidateemployment
+  - person.vadditionalcontactinfo
+  - production.vproductmodelcatalogdescription, vproductmodelinstructions
+  - purchasing.vvendorwithaddresses, vvendorwithcontacts
+  - sales.vindividualcustomer, vpersondemographics, vsalesperson
+  - sales.vsalespersonsalesbyfiscalyears, vsalespersonsalesbyfiscalyearsdata
+  - sales.vstorewithaddresses, vstorewithcontacts, vstorewithdemographics
+
+  Views are convenient for quick lookups but may have performance implications for
+  large datasets. For complex analytical queries, prefer joining base tables directly.
+  Views should NEVER be used as the source for other views or materialized reports
+  without DBA review.

@@ -29,6 +29,9 @@ AGENT_MODELS = {
     "response":     None,
 }
 
+# ─── Embedding model (always local via Ollama — free, no API tokens) ─────────
+EMBEDDING_MODEL = "mxbai-embed-large"
+
 # ─── Per-agent temperature overrides (set to None to use default) ────────────
 AGENT_TEMPERATURES = {
     "orchestrator": 0,
@@ -37,6 +40,21 @@ AGENT_TEMPERATURES = {
     "chart":        0,
     "response":     0,
 }
+
+
+_embeddings = None
+
+
+def get_embeddings():
+    """Return the shared OllamaEmbeddings instance, creating it on first call.
+
+    Always uses a local Ollama model (free, no API tokens, specialized for embeddings).
+    """
+    global _embeddings
+    if _embeddings is None:
+        from langchain_ollama import OllamaEmbeddings
+        _embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)
+    return _embeddings
 
 
 def get_llm(agent_name: str):
