@@ -7,7 +7,7 @@ Does NOT call any MCP tools — it purely routes.
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from state import AgentState
-from llm_config import get_llm
+from llm_config import invoke_with_retry
 
 # ── System prompt (easy to tune) ──────────────────────────────────────────────
 ORCHESTRATOR_SYSTEM_PROMPT = """\
@@ -36,14 +36,12 @@ def orchestrator_agent(state: AgentState) -> AgentState:
     Returns:
         Partial AgentState update with intent and plan.
     """
-    llm = get_llm("orchestrator")
-
     messages = [
         SystemMessage(content=ORCHESTRATOR_SYSTEM_PROMPT),
         HumanMessage(content=state["user_query"]),
     ]
 
-    response = llm.invoke(messages)
+    response = invoke_with_retry("orchestrator", messages)
     content = response.content.strip()
 
     # Parse the JSON response from the LLM

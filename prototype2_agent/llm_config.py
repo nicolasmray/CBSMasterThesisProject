@@ -6,9 +6,16 @@ No need to touch individual agent files.
 Supported providers:
   - "ollama"  → local via Ollama (free, no API key)
   - "groq"    → Groq cloud API (requires GROQ_API_KEY in .env)
+
+Groq API key rotation:
+  Set GROQ_API_KEYS as a comma-separated list in .env to enable automatic
+  failover when a key hits rate limits. Falls back to GROQ_API_KEY if
+  GROQ_API_KEYS is not set.
 """
 
 import os
+import threading
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -46,6 +53,84 @@ AGENT_TEMPERATURES = {
 }
 
 
+# ─── Groq API key rotation ───────────────────────────────────────────────────
+
+class GroqKeyPool:
+    """Thread-safe rotating pool of Groq API keys.
+
+    Loads keys from GROQ_API_KEYS (comma-separated) or falls back to GROQ_API_KEY.
+    When a key hits a rate limit, call rotate() to switch to the next one.
+    """
+
+    def __init__(self):
+        keys_str = os.getenv("GROQ_API_KEYS", "")
+        if keys_str:
+            self._keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+        else:
+            single = os.getenv("GROQ_API_KEY", "")
+            self._keys = [single] if single else []
+        self._index = 0
+        self._lock = threading.Lock()
+        self._exhausted: set[int] = set()
+
+    @property
+    def current_key(self) -> str:
+        if not self._keys:
+            return ""
+        with self._lock:
+            return self._keys[self._index % len(self._keys)]
+
+    def rotate(self) -> str | None:
+        """Move to the next key. Returns the new key, or None if all exhausted."""
+        with self._lock:
+            self._exhausted.add(self._index % len(self._keys))
+            if len(self._exhausted) >= len(self._keys):
+                return None  # all keys exhausted
+            # Find next non-exhausted key
+            for _ in range(len(self._keys)):
+                self._index = (self._index + 1) % len(self._keys)
+                if self._index not in self._exhausted:
+                    return self._keys[self._index]
+            return None
+
+    def reset(self):
+        """Reset exhaustion state (e.g. after a cool-down period)."""
+        with self._lock:
+            self._exhausted.clear()
+
+    @property
+    def total_keys(self) -> int:
+        return len(self._keys)
+
+    @property
+    def available_keys(self) -> int:
+        return len(self._keys) - len(self._exhausted)
+
+
+_key_pool = GroqKeyPool()
+
+
+def get_groq_key() -> str:
+    """Return the current active Groq API key."""
+    return _key_pool.current_key
+
+
+def rotate_groq_key() -> str | None:
+    """Switch to the next Groq API key. Returns new key or None if all exhausted."""
+    new_key = _key_pool.rotate()
+    if new_key:
+        # Also update the env var so any code reading os.getenv picks it up
+        os.environ["GROQ_API_KEY"] = new_key
+    return new_key
+
+
+def get_key_pool() -> GroqKeyPool:
+    """Return the key pool instance for status checks."""
+    return _key_pool
+
+
+# ─── Embeddings ───────────────────────────────────────────────────────────────
+
 _embeddings = None
 
 
@@ -61,8 +146,13 @@ def get_embeddings():
     return _embeddings
 
 
+# ─── LLM with auto-retry on rate limit ───────────────────────────────────────
+
 def get_llm(agent_name: str):
     """Return the configured LLM instance for a given agent.
+
+    Uses the current key from the rotation pool. If the pool has multiple keys,
+    callers should catch rate-limit errors and call rotate_groq_key() + retry.
 
     Args:
         agent_name: One of "orchestrator", "rag", "sql", "chart", "response".
@@ -81,7 +171,7 @@ def get_llm(agent_name: str):
         model = model_override or GROQ_MODEL
         return ChatGroq(
             model=model,
-            api_key=os.getenv("GROQ_API_KEY"),
+            api_key=get_groq_key(),
             temperature=temperature,
         )
     else:  # "ollama" (default)
@@ -91,3 +181,36 @@ def get_llm(agent_name: str):
             model=model,
             temperature=temperature,
         )
+
+
+def invoke_with_retry(agent_name: str, messages: list, max_retries: int = 3):
+    """Invoke an LLM with automatic key rotation on rate limit errors.
+
+    Args:
+        agent_name: Agent name for get_llm().
+        messages: LangChain message list.
+        max_retries: Max rotation attempts before raising.
+
+    Returns:
+        The LLM response.
+
+    Raises:
+        The last rate-limit error if all keys are exhausted.
+    """
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            llm = get_llm(agent_name)
+            return llm.invoke(messages)
+        except Exception as e:
+            error_str = str(e).lower()
+            if "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str:
+                last_error = e
+                new_key = rotate_groq_key()
+                if new_key is None:
+                    raise  # all keys exhausted
+                pool = get_key_pool()
+                print(f"  [Key rotation] Rate limited, switched to key {pool._index + 1}/{pool.total_keys}")
+                continue
+            raise  # not a rate limit error
+    raise last_error

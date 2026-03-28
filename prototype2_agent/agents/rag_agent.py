@@ -12,7 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from state import AgentState
 from mcp_server.tools.rag_tools import semantic_search
-from llm_config import get_llm
+from llm_config import invoke_with_retry
 
 # ── Reranker prompt ───────────────────────────────────────────────────────────
 RERANKER_PROMPT = """\
@@ -60,8 +60,7 @@ def rag_agent(state: AgentState) -> AgentState:
         for i, c in enumerate(candidates)
     )
 
-    llm = get_llm("rag")
-    response = llm.invoke([
+    response = invoke_with_retry("rag", [
         SystemMessage(content=RERANKER_PROMPT),
         HumanMessage(content=(
             f"Question: {user_query}\n\n"

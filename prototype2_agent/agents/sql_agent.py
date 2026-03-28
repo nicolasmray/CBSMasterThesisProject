@@ -16,7 +16,7 @@ from mcp.client.stdio import stdio_client
 
 from state import AgentState
 from mcp_client import get_server_params, call_tool
-from llm_config import get_llm
+from llm_config import invoke_with_retry
 from db.schema_snapshot import get_compact_schema
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -146,8 +146,6 @@ async def _run_sql(state: AgentState) -> AgentState:
             # (avoids spawning an MCP subprocess on every query).
             schema_str = get_compact_schema()
 
-            llm = get_llm("sql")
-
             # Initial SQL generation
             messages = [
                 SystemMessage(content=SQL_SYSTEM_PROMPT),
@@ -160,7 +158,7 @@ async def _run_sql(state: AgentState) -> AgentState:
                 ),
             ]
 
-            response = llm.invoke(messages)
+            response = invoke_with_retry("sql", messages)
             raw_sql = response.content.strip().strip("`").strip()
             # Remove markdown SQL fences if present
             if raw_sql.lower().startswith("sql"):
@@ -198,7 +196,7 @@ async def _run_sql(state: AgentState) -> AgentState:
                         SystemMessage(content=SQL_SYSTEM_PROMPT),
                         HumanMessage(content=retry_msg),
                     ]
-                    response = llm.invoke(messages)
+                    response = invoke_with_retry("sql", messages)
                     raw_sql = response.content.strip().strip("`").strip()
                     if raw_sql.lower().startswith("sql"):
                         raw_sql = raw_sql[3:].strip()
@@ -236,7 +234,7 @@ async def _run_sql(state: AgentState) -> AgentState:
                         SystemMessage(content=SQL_SYSTEM_PROMPT),
                         HumanMessage(content=retry_msg),
                     ]
-                    response = llm.invoke(messages)
+                    response = invoke_with_retry("sql", messages)
                     raw_sql = response.content.strip().strip("`").strip()
                     if raw_sql.lower().startswith("sql"):
                         raw_sql = raw_sql[3:].strip()
@@ -279,7 +277,7 @@ async def _run_sql(state: AgentState) -> AgentState:
                         SystemMessage(content=SQL_SYSTEM_PROMPT),
                         HumanMessage(content=retry_msg),
                     ]
-                    response = llm.invoke(messages)
+                    response = invoke_with_retry("sql", messages)
                     raw_sql = response.content.strip().strip("`").strip()
                     if raw_sql.lower().startswith("sql"):
                         raw_sql = raw_sql[3:].strip()
@@ -312,7 +310,7 @@ async def _run_sql(state: AgentState) -> AgentState:
                         SystemMessage(content=SQL_SYSTEM_PROMPT),
                         HumanMessage(content=retry_msg),
                     ]
-                    response = llm.invoke(messages)
+                    response = invoke_with_retry("sql", messages)
                     raw_sql = response.content.strip().strip("`").strip()
                     if raw_sql.lower().startswith("sql"):
                         raw_sql = raw_sql[3:].strip()

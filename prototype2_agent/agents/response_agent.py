@@ -39,7 +39,7 @@ from __future__ import annotations
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from state import AgentState
-from llm_config import get_llm
+from llm_config import invoke_with_retry
 
 
 def _fmt_value(v) -> str:
@@ -169,8 +169,6 @@ def response_agent(state: AgentState) -> AgentState:
     chart_spec: dict = state.get("chart_spec", {})
     error: str = state.get("error", "")
 
-    llm = get_llm("response")
-
     # ── Path A: SQL results present ────────────────────────────────────────────
     # This is the normal success path for any SQL query (COUNT, aggregate, or
     # multi-row).  Numbers come entirely from Python; LLM only adds context.
@@ -198,7 +196,7 @@ def response_agent(state: AgentState) -> AgentState:
                 f'"{chart_spec.get("title", "Chart")}" was generated for this data.'
             )
 
-        insight = llm.invoke([
+        insight = invoke_with_retry("response", [
             SystemMessage(content=INTERPRETATION_PROMPT),
             HumanMessage(content=interpretation_ctx),
         ]).content.strip()
@@ -236,7 +234,7 @@ def response_agent(state: AgentState) -> AgentState:
         # Build context from filtered chunks for the LLM
         chunk_text = "\n\n---\n\n".join(c["content"] for c in rag_chunks)
 
-        response = llm.invoke([
+        response = invoke_with_retry("response", [
             SystemMessage(content=RAG_PROMPT),
             HumanMessage(
                 content=f"Question: {user_query}\n\nContext:\n{chunk_text}"

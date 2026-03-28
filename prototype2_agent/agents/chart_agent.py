@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from state import AgentState
-from llm_config import get_llm
+from llm_config import invoke_with_retry
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 CHART_SYSTEM_PROMPT = """\
@@ -399,9 +399,6 @@ def chart_agent(state: AgentState) -> AgentState:
             "error": state.get("error", "") or "No data available to chart.",
         }
 
-    # Ask the LLM to decide chart parameters
-    llm = get_llm("chart")
-
     # Show a sample of the data (first 5 rows) to keep token usage low
     sample = sql_result[:5]
     messages = [
@@ -415,7 +412,7 @@ def chart_agent(state: AgentState) -> AgentState:
         ),
     ]
 
-    response = llm.invoke(messages)
+    response = invoke_with_retry("chart", messages)
     content = response.content.strip()
 
     try:
