@@ -20,6 +20,7 @@ import sys
 import plotly.io as pio
 import sqlglot
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Ensure the project root is on the Python path so the graph and agents can
 # be imported regardless of where Streamlit is launched from.
@@ -100,7 +101,28 @@ def _render_assistant_turn(
             )
             idx = labels.index(selected)
             fig = pio.from_json(chart_options[idx]["figure_json"])
-            st.plotly_chart(fig, width="stretch")
+            if fig.layout.width is not None:
+                # Chart is wider than the viewport — embed via HTML so the browser
+                # renders it at its native pixel width inside a scrollable div.
+                _scrollbar_css = """<style>
+body { overflow-x: auto; overflow-y: hidden; margin: 0; }
+::-webkit-scrollbar { height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(180,180,180,0.25); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(180,180,180,0.5); }
+</style>"""
+                chart_html = fig.to_html(
+                    full_html=True,
+                    include_plotlyjs="cdn",
+                    config={"responsive": False},
+                ).replace("</head>", f"{_scrollbar_css}</head>", 1)
+                components.html(
+                    chart_html,
+                    height=fig.layout.height + 40 if fig.layout.height else 520,
+                    scrolling=True,
+                )
+            else:
+                st.plotly_chart(fig, width="stretch")
 
 
 # ── Session state ──────────────────────────────────────────────────────────────

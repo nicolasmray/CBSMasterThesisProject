@@ -29,12 +29,21 @@ You will be given:
 - The user's question.
 - Optionally, extra documentation context from a knowledge base.
 
+⚠️  CRITICAL — READ BEFORE WRITING ANY SQL:
+Never reference a column that is not explicitly listed in the schema snapshot.
+Do NOT assume convenience columns like "total", "revenue", "amount", "linetotal",
+"lineamount", "line_revenue", "subtotal", or "extended_price" exist unless they appear in the schema.
+If a value must be computed, derive it from columns that do exist.
+
+sales.salesorderdetail contains exactly these revenue-related columns:
+    unitprice, unitpricediscount, orderqty
+Line revenue MUST always be written as:
+    unitprice * orderqty * (1 - unitpricediscount)
+
 Your job:
 1. Write a single, correct PostgreSQL SQL query that answers the user's question.
 2. Use ONLY tables and columns that appear in the schema snapshot. NEVER invent or guess
    column names — if a column is not listed in the schema, do not use it.
-   - If no pre-calculated revenue/amount column exists, derive it:
-     line total = unitprice * orderqty * (1 - unitpricediscount)
 3. Tables are listed as "schema.table" (e.g. "production.product", "sales.salesorderdetail").
    You MUST use fully-qualified names (schema.table) in your SQL.
 4. Infer JOIN conditions by matching ID columns across tables:
@@ -76,6 +85,59 @@ Your job:
 11. If the question contains a time filter ("last N months", "this year", etc.), you MUST include
     a WHERE clause that implements it. Never omit a time filter mentioned in the question.
 12. Return ONLY the raw SQL query — no markdown fences, no explanation.
+13. LIMIT rule — apply exactly one of these cases:
+    a) Ranking intent — user uses "most", "top", "highest", "largest", "best",
+       "worst", "lowest", "least", "biggest", "fewest":
+       → add ORDER BY <metric> DESC/ASC and LIMIT 10 (or the number the user states).
+    b) Distribution/breakdown intent — user uses "breakdown", "split", "distribution",
+       "by region", "by category", "by product", "all", "every", "each", "show me":
+       → return ALL rows, no LIMIT. The user wants the complete picture.
+    c) All other queries with no explicit ranking or count signal:
+       → no LIMIT unless the result set would obviously be unbounded (e.g. raw fact
+         tables with millions of rows). Aggregated GROUP BY queries are fine without LIMIT.
+    Never add LIMIT to a query just because it has an ORDER BY clause.
+14. When the user asks for period-over-period change, growth, decline, or comparison
+    to a previous period — phrased with "growth", "change", "increase", "decrease",
+    "compared to previous", "month over month", "year over year", "MoM", "YoY",
+    "trend", "evolution" — you MUST compute the delta in the SQL itself using window
+    functions. Do NOT return only the raw metric and leave the comparison to the caller.
+    Use a CTE to first aggregate by period, then apply LAG/LEAD in a second step:
+
+    WITH period_data AS (
+        SELECT <period_cols>, <metric> AS value
+        FROM ...
+        GROUP BY <period_cols>
+    )
+    SELECT
+        <period_cols>,
+        value,
+        LAG(value) OVER (ORDER BY <period_cols>) AS prev_value,
+        ROUND((
+            (value - LAG(value) OVER (ORDER BY <period_cols>))
+            / NULLIF(LAG(value) OVER (ORDER BY <period_cols>), 0) * 100
+        )::numeric, 2) AS pct_change
+    FROM period_data
+    ORDER BY <period_cols>;
+
+    Scoping — how many rows to return:
+    - "compared to THE previous month/quarter/year" (singular, definite article "the"):
+      the user wants ONLY the most recent period vs the one before it.
+      Add ORDER BY <period_cols> DESC LIMIT 2 so only those two rows are returned.
+    - "month over month", "how has it changed over time", "trend", "evolution",
+      "each month", "every month", "previous months" (plural):
+      the user wants the full historical series — return all rows without a LIMIT.
+
+    - For month-over-month: partition by nothing, order by year, month.
+    - For year-over-year by category: PARTITION BY category ORDER BY year.
+    - Always include both the absolute change and the percentage change.
+    - ROUND requires numeric type: always cast the expression with ::numeric before rounding,
+      e.g. ROUND((expr)::numeric, 2). Never pass double precision directly to ROUND.
+    - The first period row will have NULL for prev_value and pct_change — that is correct.
+15. Geographic joins — when the user asks to break down by province, state, region, or address:
+    Always prefer the shortest join path. If the order/transaction table already contains a
+    direct foreign key to an address or location table, join through that key directly.
+    Do NOT route through intermediate person or customer entity tables to reach an address —
+    this creates unnecessary joins and alias conflicts that break the query.
 """
 
 SQL_RETRY_PROMPT = """\
@@ -86,6 +148,9 @@ Error/result: {error_info}
 IMPORTANT: If the error mentions a column that does not exist, look up that column name in
 the schema below and find which table actually contains it, or derive the value from columns
 that do exist. Do NOT reuse the same column reference that caused the error.
+
+Reminder: never use a column that is not in the schema. If a value must be computed,
+derive it from columns that do exist (e.g. line revenue = unitprice * orderqty * (1 - unitpricediscount)).
 
 Here is additional context from the knowledge base that may help:
 {extra_context}
@@ -316,7 +381,13 @@ async def _run_sql(state: AgentState) -> AgentState:
                         raw_sql = raw_sql[3:].strip()
                     continue
 
-                # Success — result is a non-empty list of row dicts
+                # Success — result is a non-empty list of row dicts.
+                # Point-comparison queries ("compared to the previous month/quarter/year")
+                # should return only the most recent row which already includes previous row.  The SQL returns rows in
+                # ascending order, so [-1:] gives the current and previous period.
+                if "compared to the previous" in user_query.lower():
+                    result = result[-1:]
+
                 return {
                     "sql_query": validated_sql,
                     "sql_result": result,
