@@ -22,7 +22,7 @@ def _run_chart_pipeline(query: str) -> dict:
 
 CHART_QUERIES = [
     "Show me a bar chart of revenue by territory",
-    "Plot monthly sales trend for 2013",
+    "Plot monthly sales trend for 2024",
     "Create a chart of employee count by department",
 ]
 

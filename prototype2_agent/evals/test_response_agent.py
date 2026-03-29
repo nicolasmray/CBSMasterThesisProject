@@ -74,7 +74,7 @@ def test_response_sql_path_multirow():
 def test_response_does_not_invent_numbers():
     """LLM interpretation must not contain specific numbers from the result."""
     state = {
-        "user_query": "Total revenue for 2013",
+        "user_query": "Total revenue for 2024",
         "sql_query": "SELECT SUM(...) as total_revenue",
         "sql_result": [{"total_revenue": 45678912.34}],
         "rag_context": "",

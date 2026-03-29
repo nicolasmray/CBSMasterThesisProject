@@ -32,15 +32,27 @@ class GroqJudge(DeepEvalBaseLLM):
         self._client = Groq(api_key=key)
         return self._client
 
-    def generate(self, prompt: str, schema: Optional[object] = None) -> str:
-        """Synchronous generation with auto key rotation on rate limit."""
+    def _call_groq(self, prompt: str, json_mode: bool = False) -> str:
+        """Make a Groq API call with automatic key rotation on rate limit."""
         from llm_config import get_groq_key, rotate_groq_key
 
         last_error = None
         for _ in range(5):
             try:
                 client = self.load_model(api_key=get_groq_key())
-                return self._do_generate(client, prompt, schema)
+                messages = [{"role": "user", "content": prompt}]
+                if json_mode:
+                    messages[0]["content"] += (
+                        "\n\nIMPORTANT: Respond with ONLY valid JSON. "
+                        "No markdown fences, no explanation, no text before or after the JSON."
+                    )
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=0,
+                    max_tokens=4096,
+                )
+                return response.choices[0].message.content.strip()
             except Exception as e:
                 err = str(e).lower()
                 if "429" in err or "rate_limit" in err or "rate limit" in err:
@@ -48,52 +60,57 @@ class GroqJudge(DeepEvalBaseLLM):
                     new_key = rotate_groq_key()
                     if new_key is None:
                         raise
-                    print(f"  [Judge key rotation] Rate limited, switching key...")
                     continue
                 raise
         raise last_error
 
-    def _do_generate(self, client, prompt: str, schema: Optional[object] = None) -> str:
-        """Actual generation logic."""
+    def _clean_json(self, text: str) -> str:
+        """Strip markdown fences and extract JSON from LLM output."""
+        cleaned = text.strip()
+        # Remove ```json ... ``` fences
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?\s*```$", "", cleaned)
+        return cleaned.strip()
 
-        messages = [{"role": "user", "content": prompt}]
-
-        # If a Pydantic schema is requested, instruct the model to return JSON
+    def generate(self, prompt: str, schema: Optional[object] = None) -> str:
+        """Generate text. When schema is provided, return a parsed Pydantic instance."""
         if schema is not None:
-            messages[0]["content"] = (
-                prompt + "\n\nIMPORTANT: Respond with ONLY valid JSON that matches "
-                "the requested schema. No markdown fences, no explanation."
-            )
+            return self._generate_with_schema(prompt, schema)
+        return self._call_groq(prompt, json_mode=False)
 
-        response = client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=0,
-            max_tokens=4096,
-        )
-        text = response.choices[0].message.content.strip()
+    def _generate_with_schema(self, prompt: str, schema) -> object:
+        """Generate and parse into a Pydantic schema. Returns the schema instance."""
+        text = self._call_groq(prompt, json_mode=True)
+        cleaned = self._clean_json(text)
 
-        # If schema provided, parse the JSON into the Pydantic model
-        if schema is not None:
-            try:
-                # Strip markdown fences if present
-                cleaned = text
-                if cleaned.startswith("```"):
-                    cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
-                    cleaned = re.sub(r"\n?```$", "", cleaned)
-                data = json.loads(cleaned)
+        # Try direct parse
+        try:
+            data = json.loads(cleaned)
+            if isinstance(data, dict):
                 return schema(**data)
-            except (json.JSONDecodeError, TypeError, Exception):
-                # Fallback: try to extract JSON from the text
-                try:
-                    match = re.search(r"\{.*\}", text, re.DOTALL)
-                    if match:
-                        data = json.loads(match.group())
-                        return schema(**data)
-                except Exception:
-                    pass
-                return text
+        except Exception:
+            pass
 
+        # Try extracting first JSON object from the text
+        try:
+            match = re.search(r"\{[^{}]*\}", cleaned, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                return schema(**data)
+        except Exception:
+            pass
+
+        # Try extracting any JSON (including nested)
+        try:
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                return schema(**data)
+        except Exception:
+            pass
+
+        # Last resort: return raw text and let DeepEval's trimAndLoadJson handle it
         return text
 
     async def a_generate(self, prompt: str, schema: Optional[object] = None) -> str:

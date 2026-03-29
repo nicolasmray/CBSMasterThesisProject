@@ -157,14 +157,14 @@ def test_latency_breakdown():
     # Orchestrator
     from agents.orchestrator import orchestrator_agent
     start = time.perf_counter()
-    orch_result = orchestrator_agent({"user_query": "Total revenue for 2013"})
+    orch_result = orchestrator_agent({"user_query": "Total revenue for 2024"})
     timings["orchestrator"] = time.perf_counter() - start
 
     # SQL agent
     from agents.sql_agent import sql_agent
     start = time.perf_counter()
     sql_result = sql_agent({
-        "user_query": "Total revenue for 2013",
+        "user_query": "Total revenue for 2024",
         "plan": orch_result.get("plan", ""),
         "retry_count": 0,
     })
@@ -173,7 +173,7 @@ def test_latency_breakdown():
     # Response agent
     from agents.response_agent import response_agent
     state = {
-        "user_query": "Total revenue for 2013",
+        "user_query": "Total revenue for 2024",
         **orch_result,
         **sql_result,
         "rag_context": "",

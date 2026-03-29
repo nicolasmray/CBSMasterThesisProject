@@ -9,7 +9,7 @@ Keep this file as the single source of truth for expected behaviours.
 ORCHESTRATOR_CASES = [
     # SQL intent
     {"query": "How many customers do we have?", "expected_intent": "sql"},
-    {"query": "What is the total revenue for 2013?", "expected_intent": "sql"},
+    {"query": "What is the total revenue for 2024?", "expected_intent": "sql"},
     {"query": "Show me the top 10 products by sales volume", "expected_intent": "sql"},
     {"query": "Average order value by territory last year", "expected_intent": "sql"},
     {"query": "Which salesperson had the highest quota attainment?", "expected_intent": "sql"},
@@ -25,7 +25,7 @@ ORCHESTRATOR_CASES = [
     {"query": "Explain the vendor rejection threshold policy", "expected_intent": "rag"},
     # Chart intent
     {"query": "Show me a bar chart of revenue by territory", "expected_intent": "chart"},
-    {"query": "Plot monthly sales trend for 2013 as a line chart", "expected_intent": "chart"},
+    {"query": "Plot monthly sales trend for 2024 as a line chart", "expected_intent": "chart"},
     {"query": "Visualize product category revenue as a pie chart", "expected_intent": "chart"},
     {"query": "Create a chart of employee count by department", "expected_intent": "chart"},
     # Hybrid intent
@@ -52,7 +52,7 @@ SQL_AGENT_CASES = [
         "description": "Simple COUNT on customer table",
     },
     {
-        "query": "What is the total revenue for 2013?",
+        "query": "What is the total revenue for 2024?",
         "expected_tables": ["sales.salesorderdetail", "sales.salesorderheader"],
         "expected_columns": ["unitprice", "orderqty"],
         "forbidden_patterns": ["CURRENT_DATE", "NOW()"],
@@ -79,7 +79,7 @@ SQL_AGENT_CASES = [
         "description": "Employee headcount by department",
     },
     {
-        "query": "Monthly revenue trend for 2013",
+        "query": "Monthly revenue trend for 2024",
         "expected_tables": ["sales.salesorderdetail", "sales.salesorderheader"],
         "forbidden_patterns": ["TO_CHAR", "CURRENT_DATE", "NOW()"],
         "min_rows": 1,
@@ -218,7 +218,7 @@ E2E_CASES = [
         "description": "Chart generation flow",
     },
     {
-        "query": "Total revenue for 2013",
+        "query": "Total revenue for 2024",
         "expected_intent": "sql",
         "should_have_sql": True,
         "answer_must_contain_number": True,

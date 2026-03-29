@@ -178,7 +178,7 @@ def test_sql_result_custom_validation(case):
 @pytest.mark.llm
 def test_sql_revenue_formula():
     """Revenue queries must use unitprice * orderqty * (1 - unitpricediscount)."""
-    result = _run_sql_agent("What is the total revenue for 2013?")
+    result = _run_sql_agent("What is the total revenue for 2024?")
     sql_lower = _normalize_sql(result.get("sql_query", ""))
 
     # Must contain all three components of the revenue formula
