@@ -167,6 +167,84 @@ def test_reranker_returns_empty_for_irrelevant():
     )
 
 
+# ─── Fallback mechanism tests ────────────────────────────────────────────────
+
+@pytest.mark.rag
+@pytest.mark.integration
+def test_fallback_activates_when_threshold_fails():
+    """Fallback search must activate when primary search returns 0 chunks.
+
+    Uses the known-gap query 'What fields are considered high sensitivity PII?'
+    which scores below 0.55 in primary search but should still retrieve
+    relevant chunks via the fallback (no-threshold) path.
+    """
+    # Confirm primary search returns nothing (the gap we're covering)
+    primary = _search("What fields are considered high sensitivity PII?")
+    assert len(primary) == 0, (
+        f"Primary search returned {len(primary)} chunks — fallback test "
+        f"is no longer needed if the threshold gap was fixed"
+    )
+
+    # Fallback search should find chunks
+    from mcp_server.tools.rag_tools import semantic_search_no_threshold
+    fallback = semantic_search_no_threshold("What fields are considered high sensitivity PII?", top_k=10)
+
+    assert len(fallback) > 0, "Fallback search also returned 0 chunks"
+    assert fallback[0]["score"] > 0, "Fallback chunks have no score"
+
+    # Best fallback chunk should mention PII-related content
+    all_content = " ".join(c["content"].lower() for c in fallback)
+    assert "password" in all_content or "pii" in all_content or "sensitivity" in all_content, (
+        "Fallback chunks don't contain any PII-related content"
+    )
+
+
+@pytest.mark.rag
+@pytest.mark.llm
+def test_fallback_sets_rag_fallback_flag():
+    """RAG agent must set rag_fallback=True when fallback search is used."""
+    state = _run_rag_agent("What fields are considered high sensitivity PII?")
+
+    assert state.get("rag_fallback") is True, (
+        f"rag_fallback should be True for a below-threshold query, "
+        f"got: {state.get('rag_fallback')}"
+    )
+
+
+@pytest.mark.rag
+@pytest.mark.llm
+def test_fallback_reranker_filters_relevant_chunks():
+    """Fallback results must go through the LLM reranker and return relevant chunks."""
+    state = _run_rag_agent("What fields are considered high sensitivity PII?")
+    chunks = state.get("rag_chunks", [])
+
+    # The reranker should keep at least some chunks (PII info exists in the KB)
+    assert len(chunks) > 0, (
+        "Fallback + reranker returned 0 chunks — LLM filtered everything out"
+    )
+
+    # Filtered chunks should contain PII-related content
+    all_content = " ".join(c["content"].lower() for c in chunks)
+    assert "password" in all_content or "pii" in all_content or "national" in all_content, (
+        f"Fallback chunks after reranking don't mention PII content.\n"
+        f"Chunks: {[c['content'][:80] for c in chunks]}"
+    )
+
+
+@pytest.mark.rag
+@pytest.mark.llm
+def test_fallback_not_triggered_for_good_queries():
+    """Normal queries that pass the threshold should NOT trigger fallback."""
+    state = _run_rag_agent("How is revenue calculated?")
+
+    assert state.get("rag_fallback") is False, (
+        "rag_fallback should be False for queries that pass the threshold"
+    )
+    assert len(state.get("rag_chunks", [])) > 0, (
+        "Normal query should return chunks without needing fallback"
+    )
+
+
 # ─── DeepEval RAGAS-style metrics ────────────────────────────────────────────
 
 @pytest.mark.rag
@@ -175,10 +253,10 @@ def test_reranker_returns_empty_for_irrelevant():
                          ids=[f"faithfulness_{c['description']}" for c in RAG_RETRIEVAL_CASES[:5]])
 def test_rag_faithfulness(case):
     """RAG answer must be faithful to retrieved context (no hallucination)."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import FaithfulnessMetric
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     state = _run_rag_agent(case["query"])
     chunks = state.get("rag_chunks", [])
@@ -202,7 +280,8 @@ def test_rag_faithfulness(case):
         actual_output=answer,
         retrieval_context=[c["content"] for c in chunks],
     )
-    assert_test(test_case, [FaithfulnessMetric(threshold=0.5, model=get_judge_model())])
+    record_and_assert(test_case, [FaithfulnessMetric(threshold=0.5, model=get_judge_model())],
+                      test_name=f"rag_faithfulness_{case['description']}")
 
 
 @pytest.mark.rag
@@ -211,10 +290,10 @@ def test_rag_faithfulness(case):
                          ids=[f"relevancy_{c['description']}" for c in RAG_RETRIEVAL_CASES[:5]])
 def test_rag_answer_relevancy(case):
     """RAG answer must be relevant to the original question."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import AnswerRelevancyMetric
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     state = _run_rag_agent(case["query"])
     chunks = state.get("rag_chunks", [])
@@ -237,7 +316,8 @@ def test_rag_answer_relevancy(case):
         actual_output=response.content.strip(),
         retrieval_context=[c["content"] for c in chunks],
     )
-    assert_test(test_case, [AnswerRelevancyMetric(threshold=0.5, model=get_judge_model())])
+    record_and_assert(test_case, [AnswerRelevancyMetric(threshold=0.5, model=get_judge_model())],
+                      test_name=f"rag_relevancy_{case['description']}")
 
 
 @pytest.mark.rag
@@ -246,10 +326,10 @@ def test_rag_answer_relevancy(case):
                          ids=[f"ctx_relevancy_{c['description']}" for c in RAG_RETRIEVAL_CASES[:5]])
 def test_rag_contextual_relevancy(case):
     """Retrieved chunks must be contextually relevant to the query."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import ContextualRelevancyMetric
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     chunks = _search(case["query"])
 
@@ -261,7 +341,8 @@ def test_rag_contextual_relevancy(case):
         actual_output="placeholder",
         retrieval_context=[c["content"] for c in chunks],
     )
-    assert_test(test_case, [ContextualRelevancyMetric(threshold=0.4, model=get_judge_model())])
+    record_and_assert(test_case, [ContextualRelevancyMetric(threshold=0.4, model=get_judge_model())],
+                      test_name=f"rag_ctx_relevancy_{case['description']}")
 
 
 # ─── Aggregate retrieval success rate ─────────────────────────────────────────

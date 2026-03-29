@@ -59,10 +59,10 @@ def test_orchestrator_produces_plan(case):
                          ids=[f"deepeval_{i}" for i in range(6)])
 def test_orchestrator_deepeval_routing(case):
     """DeepEval LLM-graded assessment of routing quality."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import GEval
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
     from agents.orchestrator import orchestrator_agent
 
     metric = GEval(
@@ -86,7 +86,7 @@ def test_orchestrator_deepeval_routing(case):
         actual_output=f"intent={state.get('intent')}, plan={state.get('plan')}",
         expected_output=f"intent={case['expected_intent']}",
     )
-    assert_test(test_case, [metric])
+    record_and_assert(test_case, [metric], test_name=f"orchestrator_routing_{case['expected_intent']}")
 
 
 # ─── Aggregate accuracy metric ───────────────────────────────────────────────

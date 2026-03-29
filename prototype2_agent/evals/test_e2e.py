@@ -172,10 +172,10 @@ def test_e2e_handles_empty_query():
                          ids=[f"quality_{c['description']}" for c in E2E_CASES[:3]])
 def test_e2e_deepeval_quality(case):
     """DeepEval quality assessment of full pipeline output."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import GEval
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     metric = GEval(
         name="End-to-End Answer Quality",
@@ -196,4 +196,4 @@ def test_e2e_deepeval_quality(case):
         input=case["query"],
         actual_output=result.get("final_answer", "No answer produced"),
     )
-    assert_test(test_case, [metric])
+    record_and_assert(test_case, [metric], test_name=f"e2e_quality_{case['description']}")

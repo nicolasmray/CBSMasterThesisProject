@@ -196,10 +196,10 @@ def test_response_nothing_available():
 @pytest.mark.llm
 def test_response_no_hallucination_deepeval():
     """DeepEval hallucination metric on a synthetic SQL result."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import HallucinationMetric
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     state = {
         "user_query": "How many employees are there?",
@@ -217,16 +217,17 @@ def test_response_no_hallucination_deepeval():
         actual_output=result.get("final_answer", ""),
         context=["The database has 290 active employees (currentflag = true)."],
     )
-    assert_test(test_case, [HallucinationMetric(threshold=0.5, model=get_judge_model())])
+    record_and_assert(test_case, [HallucinationMetric(threshold=0.5, model=get_judge_model())],
+                      test_name="response_hallucination_check")
 
 
 @pytest.mark.llm
 def test_response_quality_deepeval():
     """DeepEval general quality assessment of the response agent."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import GEval
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     metric = GEval(
         name="Answer Quality",
@@ -259,4 +260,4 @@ def test_response_quality_deepeval():
         input="Top 3 products by revenue",
         actual_output=result.get("final_answer", ""),
     )
-    assert_test(test_case, [metric])
+    record_and_assert(test_case, [metric], test_name="response_answer_quality")

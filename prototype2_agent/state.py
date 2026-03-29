@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     sql_result: list[dict]
     rag_context: str  # LLM-synthesized interpretation (for hybrid path)
     rag_chunks: list[dict]  # raw retrieved chunks: [{content, score, source}, ...]
+    rag_fallback: bool  # True when fallback search was used (below-threshold results)
     chart_spec: dict  # contains Plotly figure JSON under key "figure_json"
     final_answer: str
     error: str

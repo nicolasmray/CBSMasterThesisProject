@@ -59,6 +59,34 @@ def semantic_search(query: str, top_k: int | None = None,
             for row in rows]
 
 
+def semantic_search_no_threshold(query: str, top_k: int = 10) -> list[dict]:
+    """Fallback search: return the top_k closest chunks regardless of score.
+
+    Used when the primary threshold-based search returns 0 results.
+    Returns the same dict format as semantic_search but without any
+    minimum score filter.
+    """
+    query_embedding = get_embeddings().embed_query(query)
+    embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT content,
+                       1 - (embedding <=> CAST(:emb AS vector)) AS score,
+                       metadata->>'source' AS source
+                FROM rag_chunks
+                ORDER BY embedding <=> CAST(:emb AS vector)
+                LIMIT :k
+            """),
+            {"emb": embedding_literal, "k": top_k},
+        ).fetchall()
+
+    return [{"content": row[0], "score": round(row[1], 3), "source": row[2]}
+            for row in rows]
+
+
 def embed_and_store(content: str, metadata: dict) -> bool:
     """Embed a text chunk and store it in the documents table.
 

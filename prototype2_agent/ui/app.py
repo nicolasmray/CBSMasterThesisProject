@@ -47,8 +47,9 @@ def _render_assistant_turn(
     sql_query: str,
     sql_result: list[dict],
     rag_chunks: list[dict] | None,
-    chart_options: list[dict] | None,
-    turn_key: str,
+    rag_fallback: bool = False,
+    chart_options: list[dict] | None = None,
+    turn_key: str = "",
 ) -> None:
     """Render all components of one assistant response inside the current chat bubble.
 
@@ -57,6 +58,7 @@ def _render_assistant_turn(
         sql_query:     Raw SQL string; empty string when no query was run.
         sql_result:    List of row-dicts from SQL execution; empty list when none.
         rag_chunks:    List of retrieved document chunks; None when no RAG ran.
+        rag_fallback:  True when fallback search was used (below-threshold results).
         chart_options: List of up to 3 dicts with keys figure_json, chart_type, title.
         turn_key:      Unique key per turn to avoid widget ID collisions.
     """
@@ -70,7 +72,16 @@ def _render_assistant_turn(
 
     # 3. Retrieved document chunks (RAG flow)
     if rag_chunks:
-        with st.expander(f"Retrieved Sources — {len(rag_chunks)} chunk(s)", expanded=False):
+        # Fallback notification
+        if rag_fallback:
+            st.warning(
+                f"No documents scored above the {0.55} similarity threshold. "
+                f"Showing best-effort matches from a fallback search "
+                f"(highest score: {rag_chunks[0].get('score', '?')})."
+            )
+
+        label = "Retrieved Sources (fallback)" if rag_fallback else "Retrieved Sources"
+        with st.expander(f"{label} — {len(rag_chunks)} chunk(s)", expanded=False):
             for i, c in enumerate(rag_chunks):
                 source = c.get("source", "unknown")
                 score = c.get("score", "?")
@@ -138,6 +149,7 @@ for msg in st.session_state.messages:
                 sql_query=msg.get("sql_query", ""),
                 sql_result=msg.get("sql_result", []),
                 rag_chunks=msg.get("rag_chunks"),
+                rag_fallback=msg.get("rag_fallback", False),
                 chart_options=msg.get("chart_options"),
                 turn_key=msg.get("turn_key", str(id(msg))),
             )
@@ -164,6 +176,7 @@ if user_input:
                 sql_query: str = result.get("sql_query", "")
                 sql_result: list[dict] = result.get("sql_result", [])
                 rag_chunks: list[dict] | None = result.get("rag_chunks") or None
+                rag_fallback: bool = result.get("rag_fallback", False)
                 chart_spec: dict = result.get("chart_spec", {})
 
                 chart_options = chart_spec.get("options") if chart_spec else None
@@ -174,6 +187,7 @@ if user_input:
                     sql_query=sql_query,
                     sql_result=sql_result,
                     rag_chunks=rag_chunks,
+                    rag_fallback=rag_fallback,
                     chart_options=chart_options,
                     turn_key=turn_key,
                 )
@@ -185,6 +199,7 @@ if user_input:
                     "sql_query": sql_query,
                     "sql_result": sql_result,
                     "rag_chunks": rag_chunks,
+                    "rag_fallback": rag_fallback,
                     "chart_options": chart_options,
                     "turn_key": turn_key,
                 })

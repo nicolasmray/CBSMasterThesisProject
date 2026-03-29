@@ -228,10 +228,10 @@ def test_sql_agent_handles_bad_query_gracefully():
                          ids=[f"deepeval_{c['description']}" for c in SQL_AGENT_CASES[:5]])
 def test_sql_deepeval_quality(case):
     """DeepEval LLM-graded assessment of SQL generation quality."""
-    from deepeval import assert_test
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import GEval
     from groq_judge import get_judge_model
+    from score_recorder import record_and_assert
 
     metric = GEval(
         name="SQL Query Quality",
@@ -257,7 +257,7 @@ def test_sql_deepeval_quality(case):
             f"Error: {result.get('error', 'none')}"
         ),
     )
-    assert_test(test_case, [metric])
+    record_and_assert(test_case, [metric], test_name=f"sql_quality_{case['description']}")
 
 
 # ─── Aggregate pass rate ─────────────────────────────────────────────────────
