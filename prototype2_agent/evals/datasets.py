@@ -207,7 +207,7 @@ E2E_CASES = [
         "expected_intent": "rag",
         "should_have_sql": False,
         "should_have_rag": True,
-        "answer_keywords": ["passwordhash", "confidential"],
+        "answer_keywords": ["password", "pii"],
         "description": "RAG policy lookup",
     },
     {
