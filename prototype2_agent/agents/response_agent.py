@@ -348,7 +348,7 @@ def response_agent(state: AgentState) -> AgentState:
                     + (f"\n\nAdditional business context:\n{rag_context}" if rag_context else "")
                     + _chart_note(chart_spec)
                 )
-                insight = llm.invoke([
+                insight = invoke_with_retry("response", [
                     SystemMessage(content=GROUNDED_INSIGHT_PROMPT),
                     HumanMessage(content=grounded_ctx),
                 ]).content.strip()
@@ -371,7 +371,7 @@ def response_agent(state: AgentState) -> AgentState:
             if rag_context:
                 interpretation_ctx += f"\n\nAdditional business context:\n{rag_context}"
             interpretation_ctx += _chart_note(chart_spec)
-            insight = llm.invoke([
+            insight = invoke_with_retry("response", [
                 SystemMessage(content=INTERPRETATION_PROMPT),
                 HumanMessage(content=interpretation_ctx),
             ]).content.strip()

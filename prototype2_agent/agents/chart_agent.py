@@ -458,7 +458,6 @@ def chart_agent(state: AgentState) -> AgentState:
                 row["period"] = f"{row.get('year')}-{row.get('month')}"
 
     # ── LLM chart selection ────────────────────────────────────────────────────
-    llm = get_llm("chart")
     sample = sql_result[:5]
     messages = [
         SystemMessage(content=CHART_SYSTEM_PROMPT),
