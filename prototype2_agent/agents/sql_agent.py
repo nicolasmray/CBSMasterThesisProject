@@ -17,7 +17,7 @@ from mcp.client.stdio import stdio_client
 from state import AgentState
 from mcp_client import get_server_params, call_tool
 from llm_config import invoke_with_retry
-from db.schema_snapshot import get_compact_schema
+from db.schema_snapshot import get_compact_schema, check_date_in_range, get_db_date_range
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SQL_SYSTEM_PROMPT = """\
@@ -211,13 +211,34 @@ async def _run_sql(state: AgentState) -> AgentState:
             # (avoids spawning an MCP subprocess on every query).
             schema_str = get_compact_schema()
 
+            # Check if query references dates outside the DB range
+            date_warning = check_date_in_range(user_query)
+            if date_warning:
+                return {
+                    "sql_query": "",
+                    "sql_result": [],
+                    "error": date_warning,
+                    "retry_count": 0,
+                    "schema_context": schema_str,
+                }
+
+            # Include DB date range in the prompt so the LLM knows valid years
+            db_dates = get_db_date_range()
+            date_hint = ""
+            if db_dates.get("min_year") and db_dates.get("max_year"):
+                date_hint = (
+                    f"\n\nDatabase date range: {db_dates['min_date'][:10]} to "
+                    f"{db_dates['max_date'][:10]} (years {db_dates['min_year']}–{db_dates['max_year']}). "
+                    f"Only use dates within this range."
+                )
+
             # Initial SQL generation
             messages = [
                 SystemMessage(content=SQL_SYSTEM_PROMPT),
                 HumanMessage(
                     content=(
                         f"Schema:\n{schema_str}\n\n"
-                        f"Plan: {plan}\n\n"
+                        f"Plan: {plan}{date_hint}\n\n"
                         f"Question: {user_query}"
                     )
                 ),
