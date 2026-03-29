@@ -20,11 +20,9 @@ sys.path.insert(0, EVALS_DIR)
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 
-# ── LangSmith tracing (opt-in via env var) ────────────────────────────────────
-# Set LANGCHAIN_TRACING_V2=true to enable. Disabled by default to avoid
-# 403 errors if the API key lacks the right permissions or org setup.
-if os.getenv("LANGSMITH_API_KEY") and os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true":
-    os.environ.setdefault("LANGCHAIN_PROJECT", "prototype2-evals")
+# ── LangSmith tracing (reads from .env) ───────────────────────────────────────
+# LANGCHAIN_TRACING_V2=true enables tracing. LANGCHAIN_ENDPOINT must point
+# to the correct regional API (e.g. https://eu.api.smith.langchain.com).
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
