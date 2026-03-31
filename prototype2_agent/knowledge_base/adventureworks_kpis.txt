@@ -176,6 +176,34 @@ source of truth for all dashboards, ad-hoc analyses, and executive reporting.
   Source table: production.product
   Note: Products with listprice = 0 are internal/non-sellable items — exclude from margin reports.
   Benchmark: Target gross margin is above 40%. Products below 20% margin need pricing review.
+  SQL example (static margin from product table — no sales data needed):
+    SELECT p.name,
+           ROUND(((p.listprice - p.standardcost) / NULLIF(p.listprice, 0) * 100)::numeric, 2) AS gross_margin_pct
+    FROM production.product p
+    WHERE p.listprice > 0
+    ORDER BY gross_margin_pct DESC
+    LIMIT 10
+
+2.4b Realised Profit Margin per Product (based on actual sales)
+  Definition: Profit margin computed from actual sales revenue vs actual cost of goods sold.
+  NEVER compute as revenue / gross_revenue — that is a discount ratio, not a margin.
+  Formula: (actual_revenue - actual_cost) / actual_revenue * 100
+  Where:
+    actual_revenue = SUM(sod.unitprice * sod.orderqty * (1 - sod.unitpricediscount))
+    actual_cost    = SUM(p.standardcost * sod.orderqty)
+  Source tables: sales.salesorderdetail (sod), production.product (p)
+  Join: sod.productid = p.productid
+  SQL example:
+    SELECT p.productid, p.name,
+           ROUND((SUM(sod.unitprice * sod.orderqty * (1 - sod.unitpricediscount))
+                  - SUM(p.standardcost * sod.orderqty))::numeric
+                 / NULLIF(SUM(sod.unitprice * sod.orderqty * (1 - sod.unitpricediscount)), 0) * 100, 2)
+           AS profit_margin_pct
+    FROM sales.salesorderdetail sod
+    JOIN production.product p ON sod.productid = p.productid
+    GROUP BY p.productid, p.name
+    ORDER BY profit_margin_pct DESC
+    LIMIT 10
 
 2.5 Product Cost History Trend
   Definition: How the standard manufacturing cost of a product has changed over time.

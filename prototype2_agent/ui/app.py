@@ -112,25 +112,66 @@ def _render_assistant_turn(
             )
             idx = labels.index(selected)
             fig = pio.from_json(chart_options[idx]["figure_json"])
-            if fig.layout.width is not None:
-                # Chart is wider than the viewport — embed via HTML so the browser
-                # renders it at its native pixel width inside a scrollable div.
-                _scrollbar_css = """<style>
+            _chart_type = chart_options[idx]["chart_type"]
+
+            _scrollbar_css = """<style>
 body { overflow-x: auto; overflow-y: hidden; margin: 0; }
 ::-webkit-scrollbar { height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(180,180,180,0.25); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(180,180,180,0.5); }
 </style>"""
+            # JavaScript injected for line charts: bold the hovered trace and dim
+            # the others, then restore all on mouse-out.
+            _line_hover_js = """<script>
+(function() {
+  var gd = document.querySelector('.plotly-graph-div');
+  if (!gd) return;
+  var _defaultWidths = null;
+  gd.on('plotly_hover', function(eventData) {
+    var n = gd.data.length;
+    if (!_defaultWidths) {
+      _defaultWidths = gd.data.map(function(t) {
+        return (t.line && t.line.width != null) ? t.line.width : 2;
+      });
+    }
+    var hovered = eventData.points[0].curveNumber;
+    var widths = [], opacities = [];
+    for (var i = 0; i < n; i++) {
+      if (i === hovered) { widths.push(2); opacities.push(1.0); }
+      else               { widths.push(1); opacities.push(0.6); }
+    }
+    Plotly.restyle(gd, {'line.width': widths, opacity: opacities});
+  });
+  gd.on('plotly_unhover', function() {
+    if (!_defaultWidths) return;
+    var n = gd.data.length;
+    var widths = [], opacities = [];
+    for (var i = 0; i < n; i++) {
+      widths.push(_defaultWidths[i]);
+      opacities.push(1.0);
+    }
+    Plotly.restyle(gd, {'line.width': widths, opacity: opacities});
+  });
+})();
+</script>"""
+
+            if fig.layout.width is not None or _chart_type == "line":
+                # Wide charts → horizontal scroll wrapper.
+                # Line charts → always use HTML so we can inject hover JavaScript.
+                _cfg = {"responsive": False} if fig.layout.width is not None else {"responsive": True}
                 chart_html = fig.to_html(
                     full_html=True,
                     include_plotlyjs="cdn",
-                    config={"responsive": False},
+                    config=_cfg,
                 ).replace("</head>", f"{_scrollbar_css}</head>", 1)
+                if _chart_type == "line":
+                    chart_html = chart_html.replace("</body>", f"{_line_hover_js}</body>", 1)
+                _height = fig.layout.height + 40 if fig.layout.height else 520
                 components.html(
                     chart_html,
-                    height=fig.layout.height + 40 if fig.layout.height else 520,
-                    scrolling=True,
+                    height=_height,
+                    scrolling=fig.layout.width is not None,
                 )
             else:
                 st.plotly_chart(fig, width="stretch")

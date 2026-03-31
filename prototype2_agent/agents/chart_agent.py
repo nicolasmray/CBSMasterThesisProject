@@ -5,8 +5,12 @@ then generates the chart using Plotly. No MCP tools needed.
 """
 
 import calendar
+import colorsys
 import json
 import math
+from collections import Counter, defaultdict
+
+import numpy as np
 
 from langchain_core.messages import SystemMessage, HumanMessage
 import plotly.graph_objects as go
@@ -20,18 +24,22 @@ CHART_SYSTEM_PROMPT = """\
 You are a Chart specialist agent for business analytics. You receive SQL query results
 and the user's original question.
 
-Your job: rank the top 2-3 most suitable chart types and return their configurations.
+Your job: return 1–4 chart configurations ranked by how well they fit the data and the question.
+Return only chart types that are genuinely useful for this specific dataset — do not pad to a fixed count.
+A single highly-relevant chart is better than three where the last one is a poor fit.
 
 Available chart types and when to use them:
 - "bar"             → comparing discrete categories; best for ranked or unordered groups
                       (e.g. revenue per product, headcount per department)
 - "grouped_bar"     → comparing the SAME metric across multiple series side-by-side;
                       set x to the category column, y to the metric column, group to the series column;
-                      requires at least 2 distinct values in the group column
+                      requires at least 2 distinct values in the group column;
+                      do NOT use when the group column has more than 10 distinct values
                       (e.g. sales by product AND year, headcount by department AND gender)
 - "small_multiples" → one panel per category showing the same bar chart;
                       set x to the x-axis column, y to the metric column, facet to the panel column;
-                      best when there are 2–6 panels and each panel has multiple x values
+                      ONLY use when there are 2–6 distinct facet values AND each panel has multiple x values;
+                      do NOT use when there are more than 6 panels or more than 10 distinct facet values
                       (e.g. monthly revenue per region, quarterly units sold per product line)
 - "line"            → continuous trends over time with ordered x-axis;
                       if data has a "year" column and a "month" column AND the query is about
@@ -47,7 +55,9 @@ Available chart types and when to use them:
 - "box"             → statistical spread — median, quartiles, outliers — for a numeric column grouped by a category;
                       use x for the category column and y for the numeric column
                       (e.g. salary by department, order size by region)
-- "waterfall"       → incremental positive/negative contributions to a total; ideal for financial P&L, variance analysis
+- "waterfall"       → incremental positive/negative contributions to a total; ideal for financial P&L, variance analysis;
+                      ONLY use when x is a single ordered sequence of categories or periods with NO additional group dimension —
+                      do NOT use when the data has multiple category groups (the chart will be distorted)
                       (e.g. revenue bridge, budget vs actual breakdown)
 - "treemap"         → part-of-whole for hierarchical or categorical data; better than pie for many categories
                       (e.g. revenue share by product, cost breakdown)
@@ -80,30 +90,46 @@ In that case:
   set x="period" and group="" — do not use separate year/month columns as x or group.
 
 Chart formatting standards (always follow these):
-- Title: all 3 charts must share the SAME title — a short, descriptive label for the data (e.g. "Total Sales by Product Category")
+- Title: all charts must share the SAME title — a short, descriptive label for the data (e.g. "Total Sales by Product Category")
 - Colors: use at most 7 distinct colors for categories; treemap is exempt and may use as many as needed
 - Legend: include a legend whenever the chart has multiple categories or series
 - Axes: provide human-readable axis labels (e.g. "Product Category", "Total Sales (USD)"); never leave axes unlabelled
 - Y-axis: always starts at 0; the upper bound is computed automatically from the data.
 - Tooltips: configure hover tooltips to show the category name and exact value on mouse-over
 
-Respond with ONLY a JSON array of exactly 3 objects (no markdown fences).
-IMPORTANT: all 3 chart_type values must be DIFFERENT — no duplicates.
+Respond with ONLY a JSON array of 1–4 objects (no markdown fences).
+IMPORTANT: all chart_type values must be DIFFERENT — no duplicates.
 - "group": required for grouped_bar (the column that defines series); set to "" for all other types.
 - "facet": required for small_multiples (the column that defines panels); set to "" for all other types.
 [
   {"chart_type": "<type>", "x": "<column>", "y": "<column>", "group": "<column or \"\">", "facet": "<column or \"\">", "title": "<title>", "x_label": "<label>", "y_label": "<label>"},
-  {"chart_type": "<type>", "x": "<column>", "y": "<column>", "group": "<column or \"\">", "facet": "<column or \"\">", "title": "<title>", "x_label": "<label>", "y_label": "<label>"},
-  {"chart_type": "<type>", "x": "<column>", "y": "<column>", "group": "<column or \"\">", "facet": "<column or \"\">", "title": "<title>", "x_label": "<label>", "y_label": "<label>"}
+  ...
 ]
 """
 
 
-# Max 7 distinct colours — colorblind-friendly palette
+# 10-colour palette — original 7 + 3 new distinct colours
 _PALETTE = [
     "#4C9BE8", "#E8834C", "#4CE8A0", "#E84C6B",
     "#A04CE8", "#E8D44C", "#4CDDE8",
+    "#E8A84C", "#84E84C", "#E84CB8",
 ]
+
+
+def _get_palette(n: int) -> list[str]:
+    """Return n visually distinct hex colours.
+
+    For n ≤ 7 the hand-picked palette is used.  For larger n, evenly-spaced
+    HSL hues are generated so every series/panel gets a unique colour.
+    """
+    if n <= len(_PALETTE):
+        return _PALETTE[:n]
+    colours: list[str] = []
+    for i in range(n):
+        h = i / n
+        r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.70)
+        colours.append(f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}")
+    return colours
 
 _MONTH_NUMS = [str(i) for i in range(1, 13)]
 _MONTH_ABBRS = [calendar.month_abbr[i] for i in range(1, 13)]
@@ -128,20 +154,30 @@ def _sort_key(val):
         return (1, str(val))
 
 
-def _aggregate(rows: list[dict], x_col: str, y_col: str) -> tuple[list, list]:
-    """Sum y values for duplicate x keys and return sorted (x_vals, y_vals)."""
+def _aggregate(rows: list[dict], x_col: str, y_col: str, preserve_order: bool = False) -> tuple[list, list]:
+    """Sum y values for duplicate x keys and return (x_vals, y_vals).
+
+    When preserve_order=True the output order matches the first occurrence of
+    each key in rows (use this when rows are already sorted chronologically and
+    the keys are strings that would sort incorrectly, e.g. "Jan'22", "Feb'22").
+    When preserve_order=False (default) keys are sorted via _sort_key.
+    """
     agg: dict[str, float] = {}
+    order: list[str] = []
     for row in rows:
         xk = _to_label(row.get(x_col, ""))
         try:
-            agg[xk] = agg.get(xk, 0.0) + float(row.get(y_col, 0) or 0)
+            val = float(row.get(y_col, 0) or 0)
         except (TypeError, ValueError):
-            agg.setdefault(xk, 0.0)
-    pairs = sorted(agg.items(), key=lambda p: _sort_key(p[0]))
-    if not pairs:
+            val = 0.0
+        if xk not in agg:
+            agg[xk] = 0.0
+            order.append(xk)
+        agg[xk] += val
+    if not agg:
         return [], []
-    xs, ys = zip(*pairs)
-    return list(xs), list(ys)
+    keys = order if preserve_order else [k for k, _ in sorted(agg.items(), key=lambda p: _sort_key(p[0]))]
+    return keys, [agg[k] for k in keys]
 
 
 def _compute_y_max(y_vals: list[float]) -> float:
@@ -174,12 +210,17 @@ def _add_grouped_traces(
     so the caller can compute the y-axis range without re-aggregating.
     """
     series = sorted(dict.fromkeys(_to_label(r.get(group, "")) for r in data), key=_sort_key)
+    palette = _get_palette(len(series))
+    # For line/area traces the data has already been sorted chronologically;
+    # preserve that order instead of letting _aggregate re-sort alphabetically
+    # (which breaks period labels like "Jan'22", "Feb'22", …).
+    _preserve = trace_type in ("line", "area")
     all_y: list[float] = []
     for i, grp in enumerate(series):
         subset = [r for r in data if _to_label(r.get(group, "")) == grp]
-        gx, gy = _aggregate(subset, x, y)
+        gx, gy = _aggregate(subset, x, y, preserve_order=_preserve)
         all_y.extend(gy)
-        color = _PALETTE[i % len(_PALETTE)]
+        color = palette[i]
         ht = f"{grp}<br>%{{x}}<br>%{{y:,.2f}}<extra></extra>"
         if trace_type == "bar":
             fig.add_trace(go.Bar(x=gx, y=gy, name=str(grp), marker_color=color, hovertemplate=ht))
@@ -218,17 +259,39 @@ def generate_chart(
 
     elif chart_type == "small_multiples":
         panels = list(dict.fromkeys(_to_label(row.get(facet, "")) for row in data))
+
+        # Cap at 6 panels — keep the top panels by total y value
+        _MAX_PANELS = 6
+        if len(panels) > _MAX_PANELS:
+            panel_totals: dict[str, float] = {}
+            for row in data:
+                pk = _to_label(row.get(facet, ""))
+                try:
+                    panel_totals[pk] = panel_totals.get(pk, 0.0) + float(row.get(y, 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+            panels = sorted(panels, key=lambda p: panel_totals.get(p, 0.0), reverse=True)[:_MAX_PANELS]
+            title = f"{title} (top {_MAX_PANELS})"
+
         n = len(panels)
         ncols = min(3, n)
-        nrows = (n + ncols - 1) // ncols
-        fig = make_subplots(rows=nrows, cols=ncols, subplot_titles=panels, shared_yaxes=True)
+        nrows = math.ceil(n / ncols)
+        panel_h = 280
+        fig = make_subplots(
+            rows=nrows, cols=ncols,
+            subplot_titles=panels,
+            shared_yaxes=True,
+            vertical_spacing=0.12,
+            horizontal_spacing=0.06,
+        )
+        _sm_palette = _get_palette(len(panels))
         for idx, panel in enumerate(panels):
             r, c = idx // ncols + 1, idx % ncols + 1
             subset = [row for row in data if _to_label(row.get(facet, "")) == panel]
             px_vals, py_vals = _aggregate(subset, x, y)
             fig.add_trace(go.Bar(
                 x=px_vals, y=py_vals,
-                marker_color=_PALETTE[idx % len(_PALETTE)],
+                marker_color=_sm_palette[idx],
                 hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
                 showlegend=False,
             ), row=r, col=c)
@@ -238,38 +301,72 @@ def generate_chart(
                     categoryorder="array", categoryarray=_MONTH_NUMS,
                     tickvals=_MONTH_NUMS, ticktext=_MONTH_ABBRS,
                 )})
+        fig.update_layout(height=panel_h * nrows + 80)
 
     elif chart_type == "bar":
-        # Prefix duplicate x values (e.g. month numbers across years) with year
-        if len(set(x_vals)) < len(x_vals):
-            year_col = next(
-                (c for c in (data[0].keys() if data else []) if "year" in c.lower() and c != x),
-                None,
-            )
-            bar_x = (
-                [f"{_to_label(row.get(year_col))}-{_to_label(row.get(x, '')).zfill(2)}" for row in data]
-                if year_col else x_vals
-            )
-        else:
-            bar_x = x_vals
-
+        # Always aggregate: collapse duplicate x values into one bar per label.
+        # Duplicate x values (e.g. the same period appearing once per territory)
+        # produce stacked bars in a single Plotly trace even with barmode="group".
+        # Aggregating (summing) gives one clean bar per x label.
+        # Preserve insertion order for period labels so the axis stays chronological.
+        bx, by = _aggregate(data, x, y, preserve_order=(x == "period"))
         if x == "period":
-            bx, by = list(bar_x), list(y_vals)
             bar_colors = ["#4CE8A0" if v >= 0 else "#E84C6B" for v in by]
         else:
-            bx, by = list(bar_x), list(y_vals)
-            bar_colors = _PALETTE[0]
+            n_bars = len(bx)
+            highlight_n = 10 if n_bars > 30 else 0
+            highlight_color = _PALETTE[0]  # blue for top N
+            base_color = "#6A6E78"          # brighter grey for the rest
+            if highlight_n > 0:
+                # Get indices of top N bars by value
+                by_array = np.array(by)
+                # Get indices of top N values (descending)
+                top_indices = np.argsort(by_array)[-highlight_n:][::-1]
+                highlight_set = set(top_indices)
+                bar_colors = [
+                    highlight_color if i in highlight_set else base_color
+                    for i in range(n_bars)
+                ]
+            else:
+                bar_colors = [highlight_color for _ in range(n_bars)]
         fig.add_trace(go.Bar(x=bx, y=by, name=y, marker_color=bar_colors, hovertemplate=hover))
+        fig.update_layout(barmode="group")
         effective_y_vals = list(by) if by else y_vals
 
     elif chart_type == "line":
+        # Ensure chronological order: if both year and month columns exist sort by
+        # (year, month) first, then rebuild x_vals/y_vals from the sorted data.
+        # The chart_agent pre-sort only fires when rate columns are present, so
+        # plain "monthly revenue" queries arrive unsorted here.
+        _line_cols = list(data[0].keys()) if data else []
+        if "year" in _line_cols and "month" in _line_cols:
+            data = sorted(data, key=lambda r: (int(r.get("year", 0) or 0), int(r.get("month", 0) or 0)))
+            x_vals = [_to_label(row.get(x, "")) for row in data]
+            y_vals = []
+            for _r in data:
+                try:
+                    y_vals.append(float(_r.get(y, 0) or 0))
+                except (TypeError, ValueError):
+                    y_vals.append(0.0)
         if group:
             effective_y_vals = _add_grouped_traces(fig, data, x, y, group, "line")
         else:
-            sx = x_vals if x == "period" else [p[0] for p in sorted(zip(x_vals, y_vals), key=lambda p: _sort_key(p[0]))]
-            sy = y_vals if x == "period" else [p[1] for p in sorted(zip(x_vals, y_vals), key=lambda p: _sort_key(p[0]))]
-            fig.add_trace(go.Scatter(x=sx, y=sy, mode="lines+markers", name=y,
-                                     line=dict(color=_PALETTE[0]), hovertemplate=hover))
+            pairs = sorted(zip(x_vals, y_vals), key=lambda p: _sort_key(p[0]))
+            sx = [p[0] for p in pairs] if x != "period" else x_vals
+            sy = [p[1] for p in pairs] if x != "period" else y_vals
+            # Guard: if x is purely categorical (non-numeric strings, non-temporal),
+            # a connected line is misleading — render as a bar instead.
+            _all_str_x = sx and all(
+                v not in _MONTH_NUMS and not v.isdigit()
+                for v in sx if v != ""
+            )
+            if _all_str_x and x != "period":
+                bar_colors = [_PALETTE[i % len(_PALETTE)] for i in range(len(sx))]
+                fig.add_trace(go.Bar(x=sx, y=sy, name=y, marker_color=bar_colors, hovertemplate=hover))
+                fig.update_layout(barmode="group")
+            else:
+                fig.add_trace(go.Scatter(x=sx, y=sy, mode="lines+markers", name=y,
+                                         line=dict(color=_PALETTE[0]), hovertemplate=hover))
             effective_y_vals = sy
 
     elif chart_type == "area":
@@ -319,25 +416,108 @@ def generate_chart(
             effective_y_vals = list(sy)
 
     elif chart_type == "scatter":
-        fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="markers", name=y,
-                                 marker=dict(color=_PALETTE[0]), hovertemplate=hover))
+        # Parse x as numeric for a continuous axis.
+        raw_scatter: list[tuple[float, float]] = []
+        for row, yv in zip(data, y_vals):
+            try:
+                raw_scatter.append((float(row.get(x, 0) or 0), yv))
+            except (TypeError, ValueError):
+                pass
+
+        # Aggregate duplicate x values by averaging y — collapses vertical stacks
+        # into one representative point per x value, revealing the true relationship.
+        agg_sums: dict[float, float] = defaultdict(float)
+        agg_counts: dict[float, int] = defaultdict(int)
+        for xv, yv in raw_scatter:
+            agg_sums[xv] += yv
+            agg_counts[xv] += 1
+        scatter_x = sorted(agg_sums)
+        scatter_y = [agg_sums[xv] / agg_counts[xv] for xv in scatter_x]
+
+        fig.add_trace(go.Scatter(
+            x=scatter_x, y=scatter_y, mode="markers", name=y,
+            marker=dict(
+                color=scatter_y,
+                colorscale=[[0, "#FFFFFF"], [1, "#4CE8A0"]],  # white → bright green
+                size=[max(6, min(20, agg_counts[xv] ** 0.5 * 3)) for xv in scatter_x],
+                opacity=0.9,
+                showscale=False,
+            ),
+            hovertemplate="%{x:,.2f}<br>Avg %{y:,.2f}<extra></extra>",
+        ))
+
+        # Add OLS trend line if there are enough points and a real correlation exists
+        if len(scatter_x) >= 5:
+            sx_arr = np.array(scatter_x, dtype=float)
+            sy_arr = np.array(scatter_y, dtype=float)
+            # Only draw the line when r² > 0.05 (weak or stronger relationship)
+            coeffs = np.polyfit(sx_arr, sy_arr, 1)
+            y_pred = np.polyval(coeffs, sx_arr)
+            ss_res = np.sum((sy_arr - y_pred) ** 2)
+            ss_tot = np.sum((sy_arr - sy_arr.mean()) ** 2)
+            r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+            if r2 > 0.05:
+                trend_x = [float(sx_arr.min()), float(sx_arr.max())]
+                trend_y = [float(np.polyval(coeffs, trend_x[0])),
+                           float(np.polyval(coeffs, trend_x[1]))]
+                direction = "↑" if coeffs[0] > 0 else "↓"
+                # Insert at index 0 so the line renders behind the scatter dots
+                fig.add_trace(go.Scatter(
+                    x=trend_x, y=trend_y, mode="lines",
+                    name=f"Trend (r²={r2:.2f} {direction})",
+                    line=dict(color="#E84C6B", width=2, dash="solid"),
+                    hoverinfo="skip",
+                ), row=None, col=None)
+                # Move trend line to back by reordering traces
+                fig.data = (fig.data[-1],) + fig.data[:-1]
+
+        effective_y_vals = scatter_y
 
     elif chart_type == "histogram":
+        # Choose bin count: sqrt rule capped at 20 so unique values don't each get their own bin
+        nbins = min(20, max(5, round(len(x_vals) ** 0.5)))
         fig.add_trace(go.Histogram(x=x_vals, name=x, marker_color=_PALETTE[0],
+                                   nbinsx=nbins,
                                    hovertemplate="%{x}<br>Count: %{y}<extra></extra>"))
 
     elif chart_type == "box":
-        fig.add_trace(go.Box(x=x_vals, y=y_vals, name=y, marker_color=_PALETTE[0]))
+        x_counts = Counter(x_vals)
+        if max(x_counts.values(), default=1) <= 1:
+            # All x values unique — no meaningful grouping. Render a single box
+            # over all y values to show the statistical distribution.
+            fig.add_trace(go.Box(y=y_vals, name=y_label or y, marker_color=_PALETTE[0],
+                                 boxmean="sd",
+                                 hovertemplate="%{y:,.2f}<extra></extra>"))
+        else:
+            fig.add_trace(go.Box(x=x_vals, y=y_vals, name=y, marker_color=_PALETTE[0]))
 
     elif chart_type == "waterfall":
-        total = sum(y_vals)
+        # Aggregate by x while preserving the data's original row order (which
+        # matches SQL ORDER BY).  _aggregate sorts alphabetically, which breaks
+        # chronological sequences like Jan'22, Feb'22, …
+        _wf_seen: dict[str, float] = {}
+        _wf_order: list[str] = []
+        for _wf_row in data:
+            _wf_k = _to_label(_wf_row.get(x, ""))
+            _wf_v = 0.0
+            try:
+                _wf_v = float(_wf_row.get(y, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+            if _wf_k not in _wf_seen:
+                _wf_seen[_wf_k] = 0.0
+                _wf_order.append(_wf_k)
+            _wf_seen[_wf_k] += _wf_v
+        wf_x = _wf_order
+        wf_y = [_wf_seen[k] for k in _wf_order]
+        total = sum(wf_y)
         fig.add_trace(go.Waterfall(
-            x=list(x_vals) + ["Total"],
-            y=list(y_vals) + [total],
-            measure=["relative"] * len(y_vals) + ["total"],
+            x=list(wf_x) + ["Total"],
+            y=list(wf_y) + [total],
+            measure=["relative"] * len(wf_y) + ["total"],
             name=y, hovertemplate=hover,
         ))
-        effective_y_vals = [sum(v for v in y_vals if v > 0)]  # y_max covers running total
+        effective_y_vals = [sum(v for v in wf_y if v > 0)]  # y_max covers running total
 
     elif chart_type == "treemap":
         fig.add_trace(go.Treemap(
@@ -411,22 +591,33 @@ def generate_chart(
         # Wide bar charts: give each bar 30 px so the chart is physically wider
         # than the viewport. The UI renders it with use_container_width=False so
         # Streamlit wraps it in a native horizontal scroll container.
-        _SCROLL_THRESHOLD = 30
-        if chart_type == "bar" and len(all_x) > _SCROLL_THRESHOLD:
-            layout["width"] = max(1000, len(all_x) * 30)
+        _SCROLL_THRESHOLD = 40
+        if chart_type == "bar" and len(set(all_x)) > _SCROLL_THRESHOLD:
+            layout["width"] = max(1000, len(set(all_x)) * 30)
             layout["height"] = 480
+        elif chart_type == "grouped_bar":
+            _unique_x = len(set(all_x))
+            if _unique_x > _SCROLL_THRESHOLD:
+                # For grouped bar each x group contains multiple bars, so give
+                # each group more horizontal space than a single bar.
+                _n_groups = len(set(_to_label(r.get(group, "")) for r in data)) if group else 1
+                layout["width"] = max(1000, _unique_x * max(30, _n_groups * 20))
+                layout["height"] = 480
 
         layout["xaxis"] = dict(title=x_label or x, tickangle=-30, **xaxis_extra)
 
-        # Y-axis range: extend below zero when data has negative values
-        y_min = min(effective_y_vals) if effective_y_vals else 0
-        y_range = (
-            [y_min * 1.1, _compute_y_max(effective_y_vals)]
-            if y_min < 0
-            else [0, _compute_y_max(effective_y_vals)]
-        )
-        layout["yaxis"] = dict(title=y_label or y, tickformat=",.0f",
-                               showgrid=True, gridwidth=1, range=y_range)
+        # Y-axis range: let Plotly auto-scale for histogram (counts are computed
+        # internally by Plotly and are not available in effective_y_vals).
+        yaxis_cfg = dict(title=y_label or y, tickformat=",.0f", showgrid=True, gridwidth=1)
+        if chart_type != "histogram":
+            y_min = min(effective_y_vals) if effective_y_vals else 0
+            y_range = (
+                [y_min * 1.1, _compute_y_max(effective_y_vals)]
+                if y_min < 0
+                else [0, _compute_y_max(effective_y_vals)]
+            )
+            yaxis_cfg["range"] = y_range
+        layout["yaxis"] = yaxis_cfg
 
     fig.update_layout(**layout)
     return fig.to_json()
@@ -483,10 +674,23 @@ def chart_agent(state: AgentState) -> AgentState:
     seen_types: set[str] = set()
     actual_cols = list(sql_result[0].keys())
 
-    for spec in specs[:3]:
+    _CAT_LIMIT = 10
+    for spec in specs[:4]:
         chart_type = spec.get("chart_type", "bar")
         if chart_type in seen_types:
             continue
+
+        # Skip grouped_bar / small_multiples when the series/panel dimension
+        # has more than _CAT_LIMIT distinct values — the chart would be unreadable.
+        if chart_type == "grouped_bar":
+            _grp_col = spec.get("group", "")
+            if _grp_col and len({_to_label(r.get(_grp_col, "")) for r in sql_result}) > _CAT_LIMIT:
+                continue
+        if chart_type == "small_multiples":
+            _fct_col = spec.get("facet", "")
+            if _fct_col and len({_to_label(r.get(_fct_col, "")) for r in sql_result}) > _CAT_LIMIT:
+                continue
+
         seen_types.add(chart_type)
 
         x_col = spec.get("x", "")
