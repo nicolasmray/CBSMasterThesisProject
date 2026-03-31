@@ -40,6 +40,17 @@ def main():
     except Exception as e:
         print(f"Warning: Schema snapshot failed: {e}")
 
+    # 2b. Capture FK snapshot (declared constraints + preserved manual entries)
+    print("Capturing FK snapshot...")
+    from db.fk_snapshot import capture_fk_snapshot
+
+    try:
+        fks = capture_fk_snapshot()
+        fk_count = sum(len(cols) for cols in fks.values())
+        print(f"FK snapshot saved ({fk_count} relationships across {len(fks)} tables).")
+    except Exception as e:
+        print(f"Warning: FK snapshot failed: {e}")
+
     # 3. Ingest new knowledge base documents (skips already-ingested files)
     print("Checking knowledge base for new documents...")
     from rag.ingest import ingest_knowledge_base
