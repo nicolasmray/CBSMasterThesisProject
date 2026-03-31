@@ -7,7 +7,6 @@ back to semantic_search for extra context on failure.
 
 import asyncio
 import concurrent.futures
-import json
 
 import sqlglot
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -17,7 +16,8 @@ from mcp.client.stdio import stdio_client
 from state import AgentState
 from mcp_client import get_server_params, call_tool
 from llm_config import invoke_with_retry
-from db.schema_snapshot import get_compact_schema, check_date_in_range, get_db_date_range
+from db.schema_snapshot import get_compact_schema, check_date_in_range, get_db_date_range, invalidate_compact_schema_cache, column_exists_anywhere
+from db.banned_columns import get_banned_columns_prompt, record_banned_column
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SQL_SYSTEM_PROMPT = """\
@@ -39,6 +39,14 @@ sales.salesorderdetail contains exactly these revenue-related columns:
     unitprice, unitpricediscount, orderqty
 Line revenue MUST always be written as:
     unitprice * orderqty * (1 - unitpricediscount)
+
+IMPORTANT: For extracting year and month, ALWAYS use:
+     EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
+Never use (EXTRACT(YEAR FROM ...) AS INT) or CAST(EXTRACT(YEAR FROM ...) AS INT) — only the ::int form is valid.
+
+IMPORTANT: For rounding, ALWAYS use:
+     ROUND(CAST(expr AS numeric), 2)
+Never use ROUND(expr, 2), ROUND(CAST(expr AS float), 2), or ROUND((expr)::numeric, 2).
 
 Your job:
 1. Write a single, correct PostgreSQL SQL query that answers the user's question.
@@ -112,10 +120,10 @@ Your job:
         <period_cols>,
         value,
         LAG(value) OVER (ORDER BY <period_cols>) AS prev_value,
-        ROUND((
+        ROUND(CAST(
             (value - LAG(value) OVER (ORDER BY <period_cols>))
             / NULLIF(LAG(value) OVER (ORDER BY <period_cols>), 0) * 100
-        )::numeric, 2) AS pct_change
+        AS numeric), 2) AS pct_change
     FROM period_data
     ORDER BY <period_cols>;
 
@@ -130,10 +138,34 @@ Your job:
     - For month-over-month: partition by nothing, order by year, month.
     - For year-over-year by category: PARTITION BY category ORDER BY year.
     - Always include both the absolute change and the percentage change.
-    - ROUND requires numeric type: always cast the expression with ::numeric before rounding,
-      e.g. ROUND((expr)::numeric, 2). Never pass double precision directly to ROUND.
+    - ROUND requires numeric type: always use CAST inside ROUND,
+      e.g. ROUND(CAST(expr AS numeric), 2). Never pass double precision directly to ROUND,
+      and never use ROUND((expr)::numeric, 2) — the ::numeric form is error-prone.
     - The first period row will have NULL for prev_value and pct_change — that is correct.
-15. Geographic joins — when the user asks to break down by province, state, region, or address:
+15. ROUND always requires a numeric cast — PostgreSQL does not have ROUND(double precision, integer).
+    Always write: ROUND(CAST(expr AS numeric), 2)
+    Never write:  ROUND(expr, 2), ROUND(CAST(expr AS float), 2), or ROUND((expr)::numeric, 2)
+    This applies everywhere: margins, ratios, averages, growth rates — any ROUND call.
+16. Column references in SELECT/WHERE/GROUP BY/ORDER BY must ALWAYS use the form
+    alias.column — never schema.table.column. Only FROM and JOIN clauses use the
+    fully-qualified schema.table form.
+    CORRECT:   SELECT s.name, COUNT(e.businessentityid) FROM sales.store s JOIN humanresources.employee e ...
+    INCORRECT: SELECT s.name, COUNT(hr.e.businessentityid) — this is invalid SQL.
+    Also: NEVER use abbreviated schema aliases (hr.*, pe.*, sa.*, pr.*, pu.*) as table
+    references in queries. Always use the full schema name (humanresources, person,
+    sales, production, purchasing).
+16. JOIN column selection — always use the most specific foreign key available, not the
+    most common one. When a table has a named FK column (e.g. salespersonid, storeid,
+    customerid, vendorid) pointing to another table, use that named column for the JOIN.
+    Only fall back to businessentityid when no named FK exists for the relationship.
+    CORRECT:   JOIN sales.salesperson sp ON s.salespersonid = sp.businessentityid
+    INCORRECT: JOIN sales.salesperson sp ON s.businessentityid = sp.businessentityid
+    To find the right FK: look at the column names on the source table in the schema.
+    A column like "salespersonid" on sales.store is the FK to sales.salesperson.
+    A column like "customerid" on sales.salesorderheader is the FK to sales.customer.
+    Never assume two tables join on businessentityid unless neither table has a more
+    specific named FK for that relationship.
+18. Geographic joins — when the user asks to break down by province, state, region, or address:
     Always prefer the shortest join path. If the order/transaction table already contains a
     direct foreign key to an address or location table, join through that key directly.
     Do NOT route through intermediate person or customer entity tables to reach an address —
@@ -164,6 +196,32 @@ Write a corrected PostgreSQL SQL query. Return ONLY the raw SQL.
 """
 
 
+def _clean_sql(raw: str) -> str:
+    """Strip markdown fences and leading 'sql' prefix from an LLM SQL response."""
+    sql = raw.strip().strip("`").strip()
+    if sql.lower().startswith("sql"):
+        sql = sql[3:].strip()
+    return sql
+
+
+def _fix_round_casts(sql: str) -> str:
+    """Ensure every ROUND(expr, n) call uses a ::numeric first argument.
+
+    PostgreSQL has no ROUND(double precision, integer) overload. The LLM frequently
+    generates expressions like ROUND(CAST(x AS DOUBLE PRECISION) / y * 100, 2) or
+    ROUND(x / y, 2) where x/y produces double precision. Fix by replacing any
+    CAST(... AS <float-type>) anywhere in the SQL with (...)::numeric, which coerces
+    the whole expression to numeric before ROUND sees it.
+    """
+    import re
+    # Replace CAST(expr AS DOUBLE PRECISION/FLOAT/REAL) → (expr)::numeric everywhere
+    pattern = re.compile(
+        r'CAST\s*\(\s*(.*?)\s*AS\s*(?:DOUBLE\s+PRECISION|FLOAT(?:4|8)?|REAL)\s*\)',
+        re.IGNORECASE | re.DOTALL,
+    )
+    return pattern.sub(lambda m: f'({m.group(1)})::numeric', sql)
+
+
 def _validate_sql(sql: str) -> str:
     """Parse and transpile SQL to PostgreSQL dialect using sqlglot.
 
@@ -182,18 +240,54 @@ def _validate_sql(sql: str) -> str:
     for source_dialect in (None, "tsql"):
         try:
             parsed = sqlglot.parse_one(sql, dialect=source_dialect)
-            return parsed.sql(
+            if source_dialect is None:
+                # SQL is already valid PostgreSQL — return the original with only
+                # the ROUND/cast safety fix applied.  Transpiling PostgreSQL back
+                # through sqlglot rewrites valid ::int / ::numeric casts into broken
+                # "(expr AS INT)" forms that PostgreSQL rejects.
+                return _fix_round_casts(sql)
+            # For TSQL (SELECT TOP N, etc.) we do need sqlglot to transpile.
+            transpiled = parsed.sql(
                 dialect="postgres",
                 unsupported_level=sqlglot.ErrorLevel.IGNORE,
             )
+            return _fix_round_casts(transpiled)
         except sqlglot.errors.ParseError:
             continue
         except Exception:
             # Transpilation failed (e.g. TO_CHAR format unsupported) — original SQL is fine
-            return sql
+            return _fix_round_casts(sql)
     # If all dialects fail, raise the error from the default parser
     parsed = sqlglot.parse_one(sql)
-    return parsed.sql(dialect="postgres", unsupported_level=sqlglot.ErrorLevel.IGNORE)
+    transpiled = parsed.sql(dialect="postgres", unsupported_level=sqlglot.ErrorLevel.IGNORE)
+    return _fix_round_casts(transpiled)
+
+
+async def _retry_sql(
+    session,
+    system_prompt: str,
+    error_info: str,
+    search_query: str,
+    schema_str: str,
+    user_query: str,
+) -> str:
+    """Fetch semantic context and ask the LLM for a corrected SQL query.
+
+    Returns the cleaned SQL string from the LLM response.
+    """
+    extra = await call_tool(session, "semantic_search", {"query": search_query, "top_k": 3})
+    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
+    retry_msg = SQL_RETRY_PROMPT.format(
+        error_info=error_info,
+        extra_context=extra_ctx,
+        schema=schema_str,
+        question=user_query,
+    )
+    response = invoke_with_retry("sql", [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=retry_msg),
+    ])
+    return _clean_sql(response.content)
 
 
 async def _run_sql(state: AgentState) -> AgentState:
@@ -210,6 +304,12 @@ async def _run_sql(state: AgentState) -> AgentState:
             # Schema is read directly from disk and cached in-process
             # (avoids spawning an MCP subprocess on every query).
             schema_str = get_compact_schema()
+
+            # Augment system prompt with any columns confirmed-nonexistent by the DB.
+            banned_note = get_banned_columns_prompt()
+            effective_system_prompt = (
+                SQL_SYSTEM_PROMPT + "\n" + banned_note if banned_note else SQL_SYSTEM_PROMPT
+            )
 
             # Check if query references dates outside the DB range
             date_warning = check_date_in_range(user_query)
@@ -234,7 +334,7 @@ async def _run_sql(state: AgentState) -> AgentState:
 
             # Initial SQL generation
             messages = [
-                SystemMessage(content=SQL_SYSTEM_PROMPT),
+                SystemMessage(content=effective_system_prompt),
                 HumanMessage(
                     content=(
                         f"Schema:\n{schema_str}\n\n"
@@ -245,10 +345,7 @@ async def _run_sql(state: AgentState) -> AgentState:
             ]
 
             response = invoke_with_retry("sql", messages)
-            raw_sql = response.content.strip().strip("`").strip()
-            # Remove markdown SQL fences if present
-            if raw_sql.lower().startswith("sql"):
-                raw_sql = raw_sql[3:].strip()
+            raw_sql = _clean_sql(response.content)
 
             # Retry loop
             while retry_count < 3:
@@ -265,27 +362,9 @@ async def _run_sql(state: AgentState) -> AgentState:
                             "retry_count": retry_count,
                             "schema_context": schema_str,
                         }
-                    # Fetch extra context via semantic search
-                    extra = await call_tool(
-                        session,
-                        "semantic_search",
-                        {"query": raw_sql, "top_k": 3},
+                    raw_sql = await _retry_sql(
+                        session, effective_system_prompt, error_info, raw_sql, schema_str, user_query
                     )
-                    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
-                    retry_msg = SQL_RETRY_PROMPT.format(
-                        error_info=error_info,
-                        extra_context=extra_ctx,
-                        schema=schema_str,
-                        question=user_query,
-                    )
-                    messages = [
-                        SystemMessage(content=SQL_SYSTEM_PROMPT),
-                        HumanMessage(content=retry_msg),
-                    ]
-                    response = invoke_with_retry("sql", messages)
-                    raw_sql = response.content.strip().strip("`").strip()
-                    if raw_sql.lower().startswith("sql"):
-                        raw_sql = raw_sql[3:].strip()
                     continue
 
                 # Execute the validated SQL
@@ -295,6 +374,16 @@ async def _run_sql(state: AgentState) -> AgentState:
                     )
                 except Exception as e:
                     error_info = f"SQL execution error: {e}"
+                    # Record banned column from exception text too
+                    if "does not exist" in str(e).lower():
+                        banned_key = record_banned_column(str(e), validated_sql)
+                        if banned_key:
+                            invalidate_compact_schema_cache()
+                            banned_note = get_banned_columns_prompt()
+                            effective_system_prompt = (
+                                SQL_SYSTEM_PROMPT + "\n" + banned_note
+                                if banned_note else SQL_SYSTEM_PROMPT
+                            )
                     retry_count += 1
                     if retry_count >= 3:
                         return {
@@ -304,26 +393,9 @@ async def _run_sql(state: AgentState) -> AgentState:
                             "retry_count": retry_count,
                             "schema_context": schema_str,
                         }
-                    extra = await call_tool(
-                        session,
-                        "semantic_search",
-                        {"query": user_query, "top_k": 3},
+                    raw_sql = await _retry_sql(
+                        session, effective_system_prompt, error_info, validated_sql, schema_str, user_query
                     )
-                    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
-                    retry_msg = SQL_RETRY_PROMPT.format(
-                        error_info=error_info,
-                        extra_context=extra_ctx,
-                        schema=schema_str,
-                        question=user_query,
-                    )
-                    messages = [
-                        SystemMessage(content=SQL_SYSTEM_PROMPT),
-                        HumanMessage(content=retry_msg),
-                    ]
-                    response = invoke_with_retry("sql", messages)
-                    raw_sql = response.content.strip().strip("`").strip()
-                    if raw_sql.lower().startswith("sql"):
-                        raw_sql = raw_sql[3:].strip()
                     continue
 
                 # Normalise result to list[dict].
@@ -335,9 +407,32 @@ async def _run_sql(state: AgentState) -> AgentState:
                         result = [result]  # single-row result — wrap and continue
                 if result is not None and not isinstance(result, list):
                     if isinstance(result, dict) and "error" in result:
-                        error_info = f"Database error: {result['error']}"
+                        raw_error = result['error']
+                        error_info = f"Database error: {raw_error}"
+                        # Persist confirmed-nonexistent columns so future sessions
+                        # don't repeat the same hallucination
+                        if "does not exist" in raw_error.lower():
+                            banned_key = record_banned_column(raw_error, validated_sql)
+                            if banned_key:
+                                invalidate_compact_schema_cache()
+                                # Rebuild effective prompt with new banned entry
+                                banned_note = get_banned_columns_prompt()
+                                effective_system_prompt = (
+                                    SQL_SYSTEM_PROMPT + "\n" + banned_note
+                                    if banned_note else SQL_SYSTEM_PROMPT
+                                )
                     else:
-                        error_info = f"Unexpected result from database: {result!r:.200}"
+                        raw_str = repr(result)
+                        error_info = f"Unexpected result from database: {raw_str[:200]}"
+                        if "does not exist" in raw_str.lower():
+                            banned_key = record_banned_column(raw_str, validated_sql)
+                            if banned_key:
+                                invalidate_compact_schema_cache()
+                                banned_note = get_banned_columns_prompt()
+                                effective_system_prompt = (
+                                    SQL_SYSTEM_PROMPT + "\n" + banned_note
+                                    if banned_note else SQL_SYSTEM_PROMPT
+                                )
                     retry_count += 1
                     if retry_count >= 3:
                         return {
@@ -347,26 +442,9 @@ async def _run_sql(state: AgentState) -> AgentState:
                             "retry_count": retry_count,
                             "schema_context": schema_str,
                         }
-                    extra = await call_tool(
-                        session,
-                        "semantic_search",
-                        {"query": user_query, "top_k": 3},
+                    raw_sql = await _retry_sql(
+                        session, effective_system_prompt, error_info, validated_sql, schema_str, user_query
                     )
-                    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
-                    retry_msg = SQL_RETRY_PROMPT.format(
-                        error_info=error_info,
-                        extra_context=extra_ctx,
-                        schema=schema_str,
-                        question=user_query,
-                    )
-                    messages = [
-                        SystemMessage(content=SQL_SYSTEM_PROMPT),
-                        HumanMessage(content=retry_msg),
-                    ]
-                    response = invoke_with_retry("sql", messages)
-                    raw_sql = response.content.strip().strip("`").strip()
-                    if raw_sql.lower().startswith("sql"):
-                        raw_sql = raw_sql[3:].strip()
                     continue
 
                 # Check for genuinely empty result (valid query, zero rows)
@@ -380,26 +458,10 @@ async def _run_sql(state: AgentState) -> AgentState:
                             "retry_count": retry_count,
                             "schema_context": schema_str,
                         }
-                    extra = await call_tool(
-                        session,
-                        "semantic_search",
-                        {"query": user_query, "top_k": 3},
+                    raw_sql = await _retry_sql(
+                        session, effective_system_prompt, "Query returned empty results.",
+                        user_query, schema_str, user_query,
                     )
-                    extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
-                    retry_msg = SQL_RETRY_PROMPT.format(
-                        error_info="Query returned empty results.",
-                        extra_context=extra_ctx,
-                        schema=schema_str,
-                        question=user_query,
-                    )
-                    messages = [
-                        SystemMessage(content=SQL_SYSTEM_PROMPT),
-                        HumanMessage(content=retry_msg),
-                    ]
-                    response = invoke_with_retry("sql", messages)
-                    raw_sql = response.content.strip().strip("`").strip()
-                    if raw_sql.lower().startswith("sql"):
-                        raw_sql = raw_sql[3:].strip()
                     continue
 
                 # Success — result is a non-empty list of row dicts.
