@@ -17,10 +17,12 @@ Python computes all numbers; the LLM only interprets.
 
 from __future__ import annotations
 
+import re
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from state import AgentState
 from llm_config import invoke_with_retry
+from db.schema_snapshot import column_exists_anywhere
 
 
 _INSIGHT_THRESHOLD = 12  # rows above this get key-facts summary instead of full list
@@ -204,13 +206,13 @@ def _format_rows(rows: list[dict]) -> str:
             f"{c}: `{_fmt_value(rows[0].get(c))}`" for c in cols
         )
 
-    # ── Two columns: label → metric ────────────────────────────────────────────
+    # ── Two columns: same card style as 3+ cols for consistency ──────────────
     if len(cols) == 2:
-        label_col, value_col = cols[0], cols[1]
-        return "\n\n".join(
-            f"{r.get(label_col)}: `{_fmt_value(r.get(value_col))}`"
-            for r in rows
-        )
+        blocks = []
+        for r in rows:
+            items = "  ·  ".join(f"{c}: `{_fmt_value(r.get(c))}`" for c in cols)
+            blocks.append(items)
+        return "\n\n".join(blocks)
 
     # ── 3+ columns: bulleted row per entry, all columns styled equally ────────
     blocks = []
@@ -324,6 +326,24 @@ def response_agent(state: AgentState) -> AgentState:
     #   > threshold  → Python extracts key facts with exact numbers;
     #                  LLM frames those facts verbatim (cannot hallucinate)
     if sql_result:
+        # Detect results where every non-count/aggregate value is NULL or empty.
+        # This happens when a view exists but its underlying data is not populated
+        # (e.g. XML demographic fields). Surfacing a table of NULLs is misleading.
+        non_id_cols = [
+            c for c in sql_result[0].keys()
+            if not any(c.lower().endswith(s) for s in ("id", "count", "total", "sum"))
+        ]
+        if non_id_cols and all(
+            row.get(c) in (None, "", "None") for row in sql_result for c in non_id_cols
+        ):
+            return {
+                "final_answer": (
+                    "The query ran successfully but the requested data is not populated "
+                    "in this database. The relevant fields exist in the schema but contain "
+                    "no values — this information may not have been loaded into the system."
+                )
+            }
+
         n_rows = len(sql_result)
         col_names = list(sql_result[0].keys())
         large_result = n_rows > _INSIGHT_THRESHOLD
@@ -392,13 +412,85 @@ def response_agent(state: AgentState) -> AgentState:
 
     # ── Path C: execution error ────────────────────────────────────────────────
     if error:
-        sql_note = f"\n\nQuery attempted:\n```sql\n{sql_query}\n```" if sql_query else ""
-        msg = (
-            f"The query could not be completed.\n\n"
-            f"**Error:** {error}"
-            f"{sql_note}"
+        # UndefinedColumn: column doesn't exist in the schema
+        undef_match = re.search(
+            r'column\s+["\']?([a-zA-Z_][a-zA-Z0-9_.]*)["\']?\s+does not exist',
+            error, re.IGNORECASE,
         )
-        return {"final_answer": msg}
+        if undef_match:
+            col_ref = undef_match.group(1).split(".")[-1]
+            tables_with_col = column_exists_anywhere(col_ref)
+            if tables_with_col:
+                return {"final_answer": (
+                    f"The column **`{col_ref}`** was not found where expected, "
+                    f"but it does exist in: {', '.join(f'`{t}`' for t in tables_with_col)}. "
+                    f"Try rephrasing your question to reference those tables."
+                )}
+            else:
+                return {"final_answer": (
+                    f"This information is not stored in the database — "
+                    f"the field **`{col_ref}`** does not exist in any table.\n\n"
+                    f"Try rephrasing your question using columns that are available in the schema. "
+                    f"If you are asking about a derived metric (e.g. profit margin, revenue, cost), "
+                    f"try asking directly — for example: "
+                    f"*\"show me products ranked by (list price minus standard cost)\"* "
+                    f"or *\"what is the revenue per product category\"*."
+                )}
+
+        # GroupingError: SQL aggregation mistake — retry already failed, give clean message
+        if "groupingerror" in error.lower() or "must appear in the group by clause" in error.lower():
+            return {"final_answer": (
+                "This question could not be answered — the database query ran into an "
+                "aggregation issue after multiple attempts.\n\n"
+                "Try rephrasing your question more specifically, for example:\n"
+                "- Specify which metric to aggregate (e.g. *count*, *average*, *total*)\n"
+                "- Narrow the scope (e.g. *per department* instead of a full distribution)"
+            )}
+
+        # UndefinedTable: table referenced doesn't exist
+        if "relation" in error.lower() and "does not exist" in error.lower():
+            tbl_match = re.search(r'relation\s+"?([^"]+)"?\s+does not exist', error, re.IGNORECASE)
+            tbl = tbl_match.group(1) if tbl_match else "a table"
+            return {"final_answer": (
+                f"The query referenced **`{tbl}`** which does not exist in the database. "
+                f"Please rephrase your question."
+            )}
+
+
+        # Syntax error at or near "AS" (often EXTRACT/CAST/ROUND mistakes)
+        if (
+            "syntax error at or near \"as\"" in error.lower()
+            or ("syntax error" in error.lower() and "extract" in error.lower())
+            or ("syntax error" in error.lower() and "cast" in error.lower())
+        ):
+            return {"final_answer": (
+                "There was a SQL syntax error, likely related to casting or aliasing. "
+                "Common causes:\n"
+                "- Use EXTRACT(YEAR FROM col)::int AS year, not (EXTRACT(YEAR FROM col) AS INT) AS year\n"
+                "- Use ROUND((expr)::numeric, 2) for rounding, not ROUND(expr, 2) or ROUND(CAST(expr AS float), 2)\n"
+                "- Always use ::int or ::numeric for type casts in PostgreSQL.\n\n"
+                "Please review your calculation and casting expressions."
+            )}
+
+        # Numeric casting/rounding error: user-friendly message
+        if (
+            "round(" in error.lower() and "numeric" in error.lower()
+        ) or (
+            "syntax error" in error.lower() and "round" in error.lower()
+        ):
+            return {"final_answer": (
+                "There was a SQL syntax error related to numeric casting or rounding. "
+                "Please check your calculation expressions (e.g., use ROUND((expr)::numeric, 2))."
+            )}
+
+        # Generic fallback: strip psycopg2 boilerplate, show clean message
+        clean_error = re.sub(r'Error executing tool run_sql_query:\s*', '', error)
+        clean_error = re.sub(r'\(psycopg2\.\w+\.\w+\)\s*', '', clean_error)
+        clean_error = re.sub(r'\nLINE \d+:.*', '', clean_error, flags=re.DOTALL).strip()
+        return {"final_answer": (
+            f"The query could not be completed.\n\n"
+            f"**Error:** {clean_error}"
+        )}
 
     # ── Path D: RAG-only (no SQL result, but documents were retrieved) ─────────
     # The reranker in rag_agent already filtered irrelevant chunks.
