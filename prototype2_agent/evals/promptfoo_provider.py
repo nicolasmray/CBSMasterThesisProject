@@ -46,10 +46,22 @@ def call_agent(query: str) -> dict:
 
 
 if __name__ == "__main__":
+    # Promptfoo exec providers receive the prompt on stdin
     if len(sys.argv) > 1:
         query = sys.argv[1]
     else:
         query = sys.stdin.read().strip()
+
+    # Promptfoo may wrap the query in JSON — extract if so
+    if query.startswith("{"):
+        try:
+            data = json.loads(query)
+            query = data.get("prompt", data.get("query", query))
+        except json.JSONDecodeError:
+            pass
+
+    # Log to stderr for debugging (won't interfere with stdout JSON)
+    print(f"[provider] Query: {query[:80]}", file=sys.stderr)
 
     result = call_agent(query)
     print(json.dumps(result))

@@ -4,8 +4,11 @@
 
 description: "Prototype 2 — Multi-Agent BI Assistant Evaluation"
 
+prompts:
+  - "{{query}}"
+
 providers:
-  - id: "exec:python promptfoo_provider.py"
+  - id: "file://promptfoo_provider_file.py"
     label: "BI Agent (Groq LLaMA 4 Scout)"
 
 # ── Test cases ────────────────────────────────────────────────────────────────
@@ -253,8 +256,11 @@ tests:
 # ── Output configuration ──────────────────────────────────────────────────────
 outputPath: reports/promptfoo_results.json
 
+# ── Use Groq as the LLM judge for llm-rubric assertions ──────────────────────
+# This replaces the default OpenAI judge — no OpenAI key needed.
 defaultTest:
   options:
     provider:
+      id: "groq:meta-llama/llama-4-scout-17b-16e-instruct"
       config:
         timeout: 120000
