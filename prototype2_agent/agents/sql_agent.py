@@ -263,6 +263,63 @@ def _validate_sql(sql: str) -> str:
     return _fix_round_casts(transpiled)
 
 
+# ── Security blocklist (code-enforced, not LLM-dependent) ────────────────────
+# These tables and columns must NEVER appear in generated SQL, regardless of
+# what the user asks or how they phrase their prompt injection.
+
+BLOCKED_TABLES = {
+    "person.password",
+}
+
+BLOCKED_COLUMNS = {
+    "passwordhash",
+    "passwordsalt",
+    "nationalidnumber",
+}
+
+# Destructive SQL keywords — the agent should only generate SELECT queries.
+BLOCKED_KEYWORDS = {
+    "DROP ", "DELETE ", "TRUNCATE ", "ALTER ", "INSERT ", "UPDATE ",
+    "CREATE ", "GRANT ", "REVOKE ",
+}
+
+
+def _check_sql_security(sql: str) -> str | None:
+    """Check SQL for blocked tables, columns, and destructive keywords.
+
+    Returns an error message if blocked, or None if the SQL is safe.
+    This is a hard code gate — the LLM cannot bypass it.
+    """
+    sql_upper = sql.upper()
+    sql_lower = sql.lower()
+
+    # Check destructive keywords
+    for kw in BLOCKED_KEYWORDS:
+        if kw in sql_upper:
+            return (
+                f"Query blocked: {kw.strip()} statements are not allowed. "
+                f"This system only supports SELECT queries for data retrieval."
+            )
+
+    # Check blocked tables
+    for table in BLOCKED_TABLES:
+        if table.lower() in sql_lower:
+            return (
+                f"Query blocked: access to '{table}' is restricted. "
+                f"This table contains sensitive data that cannot be queried."
+            )
+
+    # Check blocked columns
+    for col in BLOCKED_COLUMNS:
+        if col.lower() in sql_lower:
+            return (
+                f"Query blocked: the column '{col}' contains sensitive data "
+                f"and cannot be included in queries. This is a security restriction."
+            )
+
+    return None
+
+
 async def _retry_sql(
     session,
     system_prompt: str,
@@ -366,6 +423,17 @@ async def _run_sql(state: AgentState) -> AgentState:
                         session, effective_system_prompt, error_info, raw_sql, schema_str, user_query
                     )
                     continue
+
+                # Security check — block sensitive tables/columns/destructive SQL
+                security_error = _check_sql_security(validated_sql)
+                if security_error:
+                    return {
+                        "sql_query": validated_sql,
+                        "sql_result": [],
+                        "error": security_error,
+                        "retry_count": retry_count,
+                        "schema_context": schema_str,
+                    }
 
                 # Execute the validated SQL
                 try:

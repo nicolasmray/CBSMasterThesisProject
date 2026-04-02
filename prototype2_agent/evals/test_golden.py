@@ -5,6 +5,9 @@ are safe. Tests cover:
   - Golden queries: exact result matching against pre-computed answers
   - Adversarial: prompt injection, SQL injection, PII exfiltration
   - Behavioral: negation, superlatives, compound queries, edge cases
+
+Golden queries are cached: each unique query calls the agent ONCE, then all
+assertions run against the cached result. This halves LLM token usage.
 """
 
 import re
@@ -22,16 +25,25 @@ def _get_test_engine():
     return create_engine(TEST_DB_URL)
 
 
+# ── Cached agent results (one LLM call per unique query) ─────────────────────
+_agent_cache: dict[str, dict] = {}
+_pipeline_cache: dict[str, dict] = {}
+
+
 def _run_sql_agent(query: str) -> dict:
-    """Run the SQL agent and return the full state."""
-    from agents.sql_agent import sql_agent
-    return sql_agent({"user_query": query, "plan": "", "retry_count": 0})
+    """Run the SQL agent, caching by query string."""
+    if query not in _agent_cache:
+        from agents.sql_agent import sql_agent
+        _agent_cache[query] = sql_agent({"user_query": query, "plan": "", "retry_count": 0})
+    return _agent_cache[query]
 
 
 def _run_pipeline(query: str) -> dict:
-    """Run the full pipeline."""
-    from graph import compiled_graph
-    return compiled_graph.invoke({"user_query": query})
+    """Run the full pipeline, caching by query string."""
+    if query not in _pipeline_cache:
+        from graph import compiled_graph
+        _pipeline_cache[query] = compiled_graph.invoke({"user_query": query})
+    return _pipeline_cache[query]
 
 
 def _extract_first_value(result: list[dict]):
