@@ -1,0 +1,163 @@
+{
+  "humanresources.employeedepartmenthistory": {
+    "businessentityid": "humanresources.employee.businessentityid",
+    "departmentid": "humanresources.department.departmentid",
+    "shiftid": "humanresources.shift.shiftid"
+  },
+  "humanresources.employeepayhistory": {
+    "businessentityid": "humanresources.employee.businessentityid"
+  },
+  "humanresources.jobcandidate": {
+    "businessentityid": "humanresources.employee.businessentityid"
+  },
+  "person.address": {
+    "stateprovinceid": "person.stateprovince.stateprovinceid"
+  },
+  "person.businessentityaddress": {
+    "addressid": "person.address.addressid",
+    "addresstypeid": "person.addresstype.addresstypeid",
+    "businessentityid": "person.businessentity.businessentityid"
+  },
+  "person.businessentitycontact": {
+    "businessentityid": "person.businessentity.businessentityid",
+    "contacttypeid": "person.contacttype.contacttypeid"
+  },
+  "person.person": {
+    "businessentityid": "person.businessentity.businessentityid"
+  },
+  "person.personphone": {
+    "phonenumbertypeid": "person.phonenumbertype.phonenumbertypeid"
+  },
+  "person.stateprovince": {
+    "countryregioncode": "person.countryregion.countryregioncode",
+    "territoryid": "sales.salesterritory.territoryid"
+  },
+  "production.billofmaterials": {
+    "componentid": "production.product.productid",
+    "productassemblyid": "production.product.productid",
+    "unitmeasurecode": "production.unitmeasure.unitmeasurecode"
+  },
+  "production.document": {
+    "owner": "humanresources.employee.businessentityid"
+  },
+  "production.product": {
+    "productsubcategoryid": "production.productsubcategory.productsubcategoryid",
+    "sizeunitmeasurecode": "production.unitmeasure.unitmeasurecode",
+    "weightunitmeasurecode": "production.unitmeasure.unitmeasurecode"
+  },
+  "production.productcosthistory": {
+    "productid": "production.product.productid"
+  },
+  "production.productdocument": {
+    "productid": "production.product.productid"
+  },
+  "production.productinventory": {
+    "locationid": "production.location.locationid",
+    "productid": "production.product.productid"
+  },
+  "production.productlistpricehistory": {
+    "productid": "production.product.productid"
+  },
+  "production.productmodelproductdescriptionculture": {
+    "cultureid": "production.culture.cultureid"
+  },
+  "production.productproductphoto": {
+    "productid": "production.product.productid",
+    "productphotoid": "production.productphoto.productphotoid"
+  },
+  "production.productreview": {
+    "productid": "production.product.productid"
+  },
+  "production.productsubcategory": {
+    "productcategoryid": "production.productcategory.productcategoryid"
+  },
+  "production.transactionhistory": {
+    "productid": "production.product.productid"
+  },
+  "production.workorder": {
+    "productid": "production.product.productid",
+    "scrapreasonid": "production.scrapreason.scrapreasonid"
+  },
+  "production.workorderrouting": {
+    "locationid": "production.location.locationid",
+    "workorderid": "production.workorder.workorderid"
+  },
+  "purchasing.productvendor": {
+    "businessentityid": "purchasing.vendor.businessentityid",
+    "productid": "production.product.productid",
+    "unitmeasurecode": "production.unitmeasure.unitmeasurecode"
+  },
+  "purchasing.purchaseorderdetail": {
+    "productid": "production.product.productid",
+    "purchaseorderid": "purchasing.purchaseorderheader.purchaseorderid"
+  },
+  "purchasing.purchaseorderheader": {
+    "employeeid": "humanresources.employee.businessentityid",
+    "shipmethodid": "purchasing.shipmethod.shipmethodid",
+    "vendorid": "purchasing.vendor.businessentityid"
+  },
+  "purchasing.vendor": {
+    "businessentityid": "person.businessentity.businessentityid"
+  },
+  "sales.countryregioncurrency": {
+    "countryregioncode": "person.countryregion.countryregioncode",
+    "currencycode": "sales.currency.currencycode"
+  },
+  "sales.currencyrate": {
+    "fromcurrencycode": "sales.currency.currencycode",
+    "tocurrencycode": "sales.currency.currencycode"
+  },
+  "sales.customer": {
+    "territoryid": "sales.salesterritory.territoryid"
+  },
+  "sales.personcreditcard": {
+    "creditcardid": "sales.creditcard.creditcardid"
+  },
+  "sales.salesorderdetail": {
+    "productid": "sales.specialofferproduct.productid",
+    "salesorderid": "sales.salesorderheader.salesorderid",
+    "specialofferid": "sales.specialofferproduct.productid"
+  },
+  "sales.salesorderheader": {
+    "billtoaddressid": "person.address.addressid",
+    "creditcardid": "sales.creditcard.creditcardid",
+    "currencyrateid": "sales.currencyrate.currencyrateid",
+    "customerid": "sales.customer.customerid",
+    "salespersonid": "sales.salesperson.businessentityid",
+    "shipmethodid": "purchasing.shipmethod.shipmethodid",
+    "shiptoaddressid": "person.address.addressid",
+    "territoryid": "sales.salesterritory.territoryid"
+  },
+  "sales.salesorderheadersalesreason": {
+    "salesorderid": "sales.salesorderheader.salesorderid",
+    "salesreasonid": "sales.salesreason.salesreasonid"
+  },
+  "sales.salesperson": {
+    "businessentityid": "humanresources.employee.businessentityid",
+    "territoryid": "sales.salesterritory.territoryid"
+  },
+  "sales.salespersonquotahistory": {
+    "businessentityid": "sales.salesperson.businessentityid"
+  },
+  "sales.salestaxrate": {
+    "stateprovinceid": "person.stateprovince.stateprovinceid"
+  },
+  "sales.salesterritory": {
+    "countryregioncode": "person.countryregion.countryregioncode"
+  },
+  "sales.salesterritoryhistory": {
+    "businessentityid": "sales.salesperson.businessentityid",
+    "territoryid": "sales.salesterritory.territoryid"
+  },
+  "sales.shoppingcartitem": {
+    "productid": "production.product.productid"
+  },
+  "sales.specialofferproduct": {
+    "productid": "production.product.productid",
+    "specialofferid": "sales.specialoffer.specialofferid"
+  },
+  "sales.store": {
+    "businessentityid": "person.businessentity.businessentityid",
+    "salespersonid": "sales.salesperson.businessentityid"
+  }
+}

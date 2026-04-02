@@ -1,5 +1,6 @@
 {
   "humanresources.employee.firstname": "UndefinedColumn confirmed by PostgreSQL",
+  "person.businessentity.p": "UndefinedColumn confirmed by PostgreSQL",
   "person.person.birthdate": "UndefinedColumn confirmed by PostgreSQL",
   "person.person.gender": "UndefinedColumn confirmed by PostgreSQL",
   "person.person.id": "UndefinedColumn confirmed by PostgreSQL",
@@ -7,5 +8,6 @@
   "production.product.productcategoryid": "UndefinedColumn confirmed by PostgreSQL",
   "sales.salesorderdetail.lineprofit": "UndefinedColumn confirmed by PostgreSQL",
   "t1.businessentityid": "UndefinedColumn confirmed by PostgreSQL",
+  "t1.firstname": "UndefinedColumn confirmed by PostgreSQL",
   "t2.line_revenue": "UndefinedColumn confirmed by PostgreSQL"
 }
