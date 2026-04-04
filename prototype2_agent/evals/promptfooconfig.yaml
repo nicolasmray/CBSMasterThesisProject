@@ -9,7 +9,11 @@ prompts:
 
 providers:
   - id: "file://promptfoo_provider_file.py"
-    label: "BI Agent (Groq LLaMA 4 Scout)"
+    label: "Groq (LLaMA 4 Scout)"
+  - id: "file://promptfoo_provider_groq_llama70b.py"
+    label: "Groq (LLaMA 3.3 70B)"
+  # - id: "file://promptfoo_provider_ollama.py"
+  #   label: "Ollama (llama3.1 local)"
 
 # ── Test cases ────────────────────────────────────────────────────────────────
 tests:

@@ -1,4 +1,6 @@
 {
+  "HumanResources.Employee.firstname": "UndefinedColumn confirmed by PostgreSQL",
+  "activeflag": "UndefinedColumn confirmed by PostgreSQL",
   "humanresources.employee.firstname": "UndefinedColumn confirmed by PostgreSQL",
   "person.businessentity.p": "UndefinedColumn confirmed by PostgreSQL",
   "person.person.birthdate": "UndefinedColumn confirmed by PostgreSQL",
@@ -6,6 +8,7 @@
   "person.person.id": "UndefinedColumn confirmed by PostgreSQL",
   "person.person.stateprovinceid": "UndefinedColumn confirmed by PostgreSQL",
   "productcategoryid": "UndefinedColumn confirmed by PostgreSQL",
+  "production.product.category0": "UndefinedColumn confirmed by PostgreSQL",
   "production.product.productcategoryid": "UndefinedColumn confirmed by PostgreSQL",
   "sales.salesorderdetail.lineprofit": "UndefinedColumn confirmed by PostgreSQL",
   "sales.salesorderdetail.linerevenue": "UndefinedColumn confirmed by PostgreSQL",
@@ -14,5 +17,7 @@
   "sales.vstorewithdemographics.annualsales": "UndefinedColumn confirmed by PostgreSQL",
   "t1.businessentityid": "UndefinedColumn confirmed by PostgreSQL",
   "t1.firstname": "UndefinedColumn confirmed by PostgreSQL",
-  "t2.line_revenue": "UndefinedColumn confirmed by PostgreSQL"
+  "t2.firstname": "UndefinedColumn confirmed by PostgreSQL",
+  "t2.line_revenue": "UndefinedColumn confirmed by PostgreSQL",
+  "terminationdate": "UndefinedColumn confirmed by PostgreSQL"
 }
