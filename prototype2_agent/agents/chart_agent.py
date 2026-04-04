@@ -36,6 +36,20 @@ Available chart types and when to use them:
                       requires at least 2 distinct values in the group column;
                       do NOT use when the group column has more than 10 distinct values
                       (e.g. sales by product AND year, headcount by department AND gender)
+- "stacked_bar"     → shows how a total is composed of parts stacked per category;
+                      set x to the category, y to the metric, group to the series column;
+                      best when you care about BOTH the total height AND each part's contribution;
+                      do NOT use when the group column has more than 10 distinct values
+                      (e.g. revenue per region stacked by product category, headcount by department stacked by role)
+- "normalized_bar"  → 100% stacked bar — shows each part as a share of the whole per category;
+                      set x to the category, y to the metric, group to the series column;
+                      use when relative composition matters more than absolute values;
+                      do NOT use when the group column has more than 10 distinct values
+                      (e.g. sales mix by category, revenue share by region over time)
+- "bar-line"           → bar for the primary metric, line for a secondary metric on its own right y-axis;
+                      ideal when comparing two related but differently-scaled values in one view;
+                      set x to the shared axis, y to the bar metric, y2 to the line metric;
+                      (e.g. revenue bars + profit margin line, sales volume bars + growth rate line)
 - "small_multiples" → one panel per category showing the same bar chart;
                       set x to the x-axis column, y to the metric column, facet to the panel column;
                       ONLY use when there are 2–6 distinct facet values AND each panel has multiple x values;
@@ -68,8 +82,10 @@ Available chart types and when to use them:
 Common high-value triplets for business questions:
 - "sales/revenue by category"       → bar, treemap, donut
 - "trend over time"                 → line, area, bar
-- "multi-series comparison"         → grouped_bar, small_multiples, bar
+- "multi-series comparison"         → grouped_bar, stacked_bar, small_multiples
+- "composition / part of whole"     → stacked_bar, normalized_bar, donut
 - "performance by group over time"  → grouped_bar, small_multiples, line
+- "two metrics side by side"        → bar-line, grouped_bar, bar
 - "distribution analysis"           → histogram, box, scatter
 - "financial breakdown"             → waterfall, bar, treemap
 - "correlation analysis"            → scatter, histogram, box
@@ -99,10 +115,12 @@ Chart formatting standards (always follow these):
 
 Respond with ONLY a JSON array of 1–4 objects (no markdown fences).
 IMPORTANT: all chart_type values must be DIFFERENT — no duplicates.
-- "group": required for grouped_bar (the column that defines series); set to "" for all other types.
-- "facet": required for small_multiples (the column that defines panels); set to "" for all other types.
+- "group": required for grouped_bar, stacked_bar, normalized_bar; set to "" for all other types.
+- "facet": required for small_multiples; set to "" for all other types.
+- "y2": required for bar-line (the line metric column); set to "" for all other types.
+- "y2_label": human-readable label for the y2 axis; set to "" for all other types.
 [
-  {"chart_type": "<type>", "x": "<column>", "y": "<column>", "group": "<column or \"\">", "facet": "<column or \"\">", "title": "<title>", "x_label": "<label>", "y_label": "<label>"},
+  {"chart_type": "<type>", "x": "<col>", "y": "<col>", "y2": "<col or \"\">", "group": "<col or \"\">", "facet": "<col or \"\">", "title": "<title>", "x_label": "<label>", "y_label": "<label>", "y2_label": "<label or \"\">"},
   ...
 ]
 """
@@ -154,15 +172,15 @@ def _sort_key(val):
         return (1, str(val))
 
 
-def _aggregate(rows: list[dict], x_col: str, y_col: str, preserve_order: bool = False) -> tuple[list, list]:
-    """Sum y values for duplicate x keys and return (x_vals, y_vals).
+def _aggregate(rows: list[dict], x_col: str, y_col: str,
+               preserve_order: bool = False, mean: bool = False) -> tuple[list, list]:
+    """Aggregate y values for duplicate x keys and return (x_vals, y_vals).
 
-    When preserve_order=True the output order matches the first occurrence of
-    each key in rows (use this when rows are already sorted chronologically and
-    the keys are strings that would sort incorrectly, e.g. "Jan'22", "Feb'22").
-    When preserve_order=False (default) keys are sorted via _sort_key.
+    preserve_order: keep first-occurrence order instead of sorting (use for period labels).
+    mean: average instead of sum — use for rates, percentages, averages.
     """
     agg: dict[str, float] = {}
+    counts: dict[str, int] = {}
     order: list[str] = []
     for row in rows:
         xk = _to_label(row.get(x_col, ""))
@@ -172,12 +190,15 @@ def _aggregate(rows: list[dict], x_col: str, y_col: str, preserve_order: bool = 
             val = 0.0
         if xk not in agg:
             agg[xk] = 0.0
+            counts[xk] = 0
             order.append(xk)
         agg[xk] += val
+        counts[xk] += 1
     if not agg:
         return [], []
     keys = order if preserve_order else [k for k, _ in sorted(agg.items(), key=lambda p: _sort_key(p[0]))]
-    return keys, [agg[k] for k in keys]
+    vals = [agg[k] / counts[k] if mean else agg[k] for k in keys]
+    return keys, vals
 
 
 def _compute_y_max(y_vals: list[float]) -> float:
@@ -237,6 +258,7 @@ def generate_chart(
     data: list[dict], chart_type: str, x: str, y: str, title: str,
     x_label: str = "", y_label: str = "",
     group: str = "", facet: str = "",
+    y2: str = "", y2_label: str = "",
 ) -> str:
     """Render a Plotly figure and return it serialised as a JSON string."""
     x_vals = [_to_label(row.get(x, "")) for row in data]
@@ -258,6 +280,11 @@ def generate_chart(
         fig.update_layout(barmode="group")
 
     elif chart_type == "small_multiples":
+        # Sort data chronologically so period labels appear in the right order
+        _sm_cols = list(data[0].keys()) if data else []
+        if "year" in _sm_cols and "month" in _sm_cols:
+            data = sorted(data, key=lambda r: (int(r.get("year", 0) or 0), int(r.get("month", 0) or 0)))
+
         panels = list(dict.fromkeys(_to_label(row.get(facet, "")) for row in data))
 
         # Cap at 6 panels — keep the top panels by total y value
@@ -271,24 +298,24 @@ def generate_chart(
                 except (TypeError, ValueError):
                     pass
             panels = sorted(panels, key=lambda p: panel_totals.get(p, 0.0), reverse=True)[:_MAX_PANELS]
-            title = f"{title} (top {_MAX_PANELS})"
+            title = f"{title} (top {_MAX_PANELS} by total {y_label or y})"
 
         n = len(panels)
         ncols = min(3, n)
         nrows = math.ceil(n / ncols)
-        panel_h = 280
+        panel_h = 300
         fig = make_subplots(
             rows=nrows, cols=ncols,
             subplot_titles=panels,
-            shared_yaxes=True,
-            vertical_spacing=0.12,
+            shared_yaxes="all",   # same scale across every panel
+            vertical_spacing=0.18,
             horizontal_spacing=0.06,
         )
         _sm_palette = _get_palette(len(panels))
         for idx, panel in enumerate(panels):
             r, c = idx // ncols + 1, idx % ncols + 1
             subset = [row for row in data if _to_label(row.get(facet, "")) == panel]
-            px_vals, py_vals = _aggregate(subset, x, y)
+            px_vals, py_vals = _aggregate(subset, x, y, preserve_order=(x == "period"))
             fig.add_trace(go.Bar(
                 x=px_vals, y=py_vals,
                 marker_color=_sm_palette[idx],
@@ -547,6 +574,52 @@ def generate_chart(
             outsidetextfont=dict(size=12),
         ))
 
+    elif chart_type in ("stacked_bar", "normalized_bar"):
+        series = sorted(dict.fromkeys(_to_label(r.get(group, "")) for r in data), key=_sort_key)
+        palette = _get_palette(len(series))
+        # For normalized_bar pre-compute total per x so we can express each value as %
+        if chart_type == "normalized_bar":
+            x_totals: dict[str, float] = {}
+            for row in data:
+                xk = _to_label(row.get(x, ""))
+                try:
+                    x_totals[xk] = x_totals.get(xk, 0.0) + abs(float(row.get(y, 0) or 0))
+                except (TypeError, ValueError):
+                    pass
+        all_stack_y: list[float] = []
+        for i, grp in enumerate(series):
+            subset = [r for r in data if _to_label(r.get(group, "")) == grp]
+            gx, gy = _aggregate(subset, x, y, preserve_order=(x == "period"))
+            if chart_type == "normalized_bar":
+                gy = [v / x_totals[xk] * 100 if x_totals.get(xk) else 0 for xk, v in zip(gx, gy)]
+            all_stack_y.extend(gy)
+            suffix = "%" if chart_type == "normalized_bar" else ""
+            ht = f"{grp}<br>%{{x}}<br>%{{y:,.1f}}{suffix}<extra></extra>"
+            fig.add_trace(go.Bar(x=gx, y=gy, name=str(grp), marker_color=palette[i], hovertemplate=ht))
+        fig.update_layout(barmode="stack")
+        effective_y_vals = [100] if chart_type == "normalized_bar" else all_stack_y
+
+    elif chart_type == "bar-line":
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        bx, by = _aggregate(data, x, y, preserve_order=(x == "period"))
+        fig.add_trace(
+            go.Bar(x=bx, y=by, name=y_label or y, marker_color=_PALETTE[0], hovertemplate=hover),
+            secondary_y=False,
+        )
+        if y2:
+            l2x, l2y = _aggregate(data, x, y2, preserve_order=(x == "period"), mean=True)
+            fig.add_trace(
+                go.Scatter(x=l2x, y=l2y, mode="lines+markers", name=y2_label or y2,
+                           line=dict(color=_PALETTE[3], width=2),
+                           hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>"),
+                secondary_y=True,
+            )
+            _y2_max = _compute_y_max(l2y) if l2y else 1.0
+            fig.update_yaxes(title_text=y2_label or y2, secondary_y=True,
+                             tickformat=",.2f", showgrid=False,
+                             range=[0, _y2_max])
+        effective_y_vals = by
+
     else:
         fig.add_trace(go.Table(
             header=dict(values=list(data[0].keys()) if data else []),
@@ -556,7 +629,7 @@ def generate_chart(
     # ── Layout ────────────────────────────────────────────────────────────────
     _no_cartesian = {"treemap", "small_multiples", "donut"}
     show_legend = (
-        chart_type in {"treemap", "grouped_bar", "donut"}
+        chart_type in {"treemap", "grouped_bar", "stacked_bar", "normalized_bar", "donut", "bar-line"}
         or (chart_type in ("line", "area") and bool(group))
         or (chart_type == "area" and x == "period")
     )
@@ -595,28 +668,30 @@ def generate_chart(
         if chart_type == "bar" and len(set(all_x)) > _SCROLL_THRESHOLD:
             layout["width"] = max(1000, len(set(all_x)) * 30)
             layout["height"] = 480
-        elif chart_type == "grouped_bar":
+        elif chart_type in ("grouped_bar", "stacked_bar", "normalized_bar"):
             _unique_x = len(set(all_x))
             if _unique_x > _SCROLL_THRESHOLD:
-                # For grouped bar each x group contains multiple bars, so give
-                # each group more horizontal space than a single bar.
                 _n_groups = len(set(_to_label(r.get(group, "")) for r in data)) if group else 1
-                layout["width"] = max(1000, _unique_x * max(30, _n_groups * 20))
+                _px_per_group = max(30, _n_groups * 20) if chart_type == "grouped_bar" else 30
+                layout["width"] = max(1000, _unique_x * _px_per_group)
                 layout["height"] = 480
 
         layout["xaxis"] = dict(title=x_label or x, tickangle=-30, **xaxis_extra)
 
-        # Y-axis range: let Plotly auto-scale for histogram (counts are computed
-        # internally by Plotly and are not available in effective_y_vals).
-        yaxis_cfg = dict(title=y_label or y, tickformat=",.0f", showgrid=True, gridwidth=1)
-        if chart_type != "histogram":
-            y_min = min(effective_y_vals) if effective_y_vals else 0
-            y_range = (
-                [y_min * 1.1, _compute_y_max(effective_y_vals)]
-                if y_min < 0
-                else [0, _compute_y_max(effective_y_vals)]
-            )
-            yaxis_cfg["range"] = y_range
+        # Y-axis: fixed 0–100 for normalized bar; auto-scaled for everything else.
+        if chart_type == "normalized_bar":
+            yaxis_cfg = dict(title="% of Total", tickformat=",.0f", showgrid=True,
+                             gridwidth=1, range=[0, 100])
+        else:
+            yaxis_cfg = dict(title=y_label or y, tickformat=",.0f", showgrid=True, gridwidth=1)
+            if chart_type != "histogram":
+                y_min = min(effective_y_vals) if effective_y_vals else 0
+                y_range = (
+                    [y_min * 1.1, _compute_y_max(effective_y_vals)]
+                    if y_min < 0
+                    else [0, _compute_y_max(effective_y_vals)]
+                )
+                yaxis_cfg["range"] = y_range
         layout["yaxis"] = yaxis_cfg
 
     fig.update_layout(**layout)
@@ -680,9 +755,8 @@ def chart_agent(state: AgentState) -> AgentState:
         if chart_type in seen_types:
             continue
 
-        # Skip grouped_bar / small_multiples when the series/panel dimension
-        # has more than _CAT_LIMIT distinct values — the chart would be unreadable.
-        if chart_type == "grouped_bar":
+        # Skip chart types where the group/facet dimension exceeds _CAT_LIMIT
+        if chart_type in ("grouped_bar", "stacked_bar", "normalized_bar"):
             _grp_col = spec.get("group", "")
             if _grp_col and len({_to_label(r.get(_grp_col, "")) for r in sql_result}) > _CAT_LIMIT:
                 continue
@@ -695,12 +769,15 @@ def chart_agent(state: AgentState) -> AgentState:
 
         x_col = spec.get("x", "")
         y_col = spec.get("y", "")
+        y2_col = spec.get("y2", "")
 
         # Fallback if LLM picked a column that doesn't exist
         if x_col not in actual_cols:
             x_col = next((c for c in actual_cols if not isinstance(sql_result[0].get(c), (int, float))), actual_cols[0])
         if y_col not in actual_cols:
             y_col = actual_cols[-1]
+        if y2_col and y2_col not in actual_cols:
+            y2_col = ""
 
         try:
             figure_json = generate_chart(
@@ -708,6 +785,7 @@ def chart_agent(state: AgentState) -> AgentState:
                 spec.get("title", "Chart"),
                 spec.get("x_label", ""), spec.get("y_label", ""),
                 spec.get("group", ""), spec.get("facet", ""),
+                y2_col, spec.get("y2_label", ""),
             )
             options.append({"figure_json": figure_json, "chart_type": chart_type, "title": spec.get("title", "Chart")})
         except Exception:

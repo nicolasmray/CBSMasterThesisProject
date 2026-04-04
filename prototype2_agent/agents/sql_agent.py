@@ -39,6 +39,9 @@ sales.salesorderdetail contains exactly these revenue-related columns:
     unitprice, unitpricediscount, orderqty
 Line revenue MUST always be written as:
     unitprice * orderqty * (1 - unitpricediscount)
+unitpricediscount is already a fraction (0.00–1.00). To get average discount as a percentage:
+    ROUND(CAST(AVG(sod.unitpricediscount) * 100 AS numeric), 2)
+Never derive the discount by dividing revenue — use the column directly.
 
 IMPORTANT: For extracting year and month, ALWAYS use:
      EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
@@ -61,9 +64,10 @@ Your job:
      primary key for people, stores, vendors, and employees.
    - Example: sales.customer.personid → person.person.businessentityid
    - Example: purchasing.purchaseorderheader.employeeid → humanresources.employee.businessentityid
-6. When the user asks for names, labels, or descriptions, always JOIN to the table that
-   contains that human-readable text — do not return just IDs. For customer names,
-   join through person.person to get firstname and lastname.
+6. Whenever a query groups or breaks down by any entity, always JOIN to get the
+   human-readable name and use it instead of the raw ID — even if the user did not
+   explicitly ask for "names". Never return bare numeric IDs as dimension labels.
+   For customer names, join through person.person to get firstname and lastname.
 7. For time-series queries, always use EXTRACT to return date parts as separate integer columns
    (e.g. year, month) and ORDER BY them ASC. Never use TO_CHAR or combined date strings.
    Example: EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
@@ -109,6 +113,10 @@ Your job:
     "compared to previous", "month over month", "year over year", "MoM", "YoY",
     "trend", "evolution" — you MUST compute the delta in the SQL itself using window
     functions. Do NOT return only the raw metric and leave the comparison to the caller.
+    IMPORTANT: ONLY add window functions and period breakdowns when the user explicitly
+    uses one of the keywords above. If the user asks for a simple breakdown by category
+    (e.g. "by product category", "per region") with NO time or change keywords, return
+    a flat aggregation — one row per category, no LAG, no year column, no date filter.
     Use a CTE to first aggregate by period, then apply LAG/LEAD in a second step:
 
     WITH period_data AS (
@@ -154,6 +162,8 @@ Your job:
     Also: NEVER use abbreviated schema aliases (hr.*, pe.*, sa.*, pr.*, pu.*) as table
     references in queries. Always use the full schema name (humanresources, person,
     sales, production, purchasing).
+    Table aliases MUST be single words with no dots — "pc", "psc", "cat" are valid;
+    "pr.pc", "prod.cat" are INVALID and will cause a parse error.
 16. JOIN column selection — always use the most specific foreign key available, not the
     most common one. When a table has a named FK column (e.g. salespersonid, storeid,
     customerid, vendorid) pointing to another table, use that named column for the JOIN.
@@ -170,6 +180,17 @@ Your job:
     direct foreign key to an address or location table, join through that key directly.
     Do NOT route through intermediate person or customer entity tables to reach an address —
     this creates unnecessary joins and alias conflicts that break the query.
+19. Avoid implicit row filtering through joins — every JOIN you add that is not strictly
+    needed for a selected column silently excludes rows where that FK is NULL.
+    In particular:
+    - Never join sales.salesperson just to reach sales.salesterritory.
+      sales.salesorderheader already has a direct territoryid column — use that.
+    - Never join sales.customer or person.person just to reach a territory or address
+      when the order/transaction table has a direct FK.
+    - If a dimension column (e.g. territoryid, storeid) exists directly on the fact table,
+      join from there — do not route through intermediate entity tables.
+    Wrong:  soh → salesperson → salesterritory   (excludes online orders with NULL salespersonid)
+    Right:  soh → salesterritory via soh.territoryid
 """
 
 SQL_RETRY_PROMPT = """\
