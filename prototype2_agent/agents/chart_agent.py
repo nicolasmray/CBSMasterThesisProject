@@ -47,7 +47,10 @@ Available chart types and when to use them:
                       do NOT use when the group column has more than 10 distinct values
                       (e.g. sales mix by category, revenue share by region over time)
 - "bar-line"           → bar for the primary metric, line for a secondary metric on its own right y-axis;
-                      ideal when comparing two related but differently-scaled values in one view;
+                      ONLY use when the two metrics have genuinely different units or scales
+                      (e.g. revenue in millions vs margin %, order count vs average value);
+                      do NOT use when both metrics share the same unit (e.g. both USD, both counts) —
+                      use grouped_bar instead so both are directly comparable on one axis;
                       set x to the shared axis, y to the bar metric, y2 to the line metric;
                       (e.g. revenue bars + profit margin line, sales volume bars + growth rate line)
 - "small_multiples" → one panel per category showing the same bar chart;
@@ -62,8 +65,12 @@ Available chart types and when to use them:
                       (e.g. monthly sales, daily active users, yearly trend by region)
 - "area"            → same as line but emphasises volume/magnitude over time;
                       good for cumulative or stacked metrics; also supports group for multi-series
-- "scatter"         → relationship/correlation between two numeric variables
-                      (e.g. price vs. units sold, age vs. salary)
+- "scatter"         → relationship/correlation between two numeric variables,
+                      OR comparison across many data points;
+                      do NOT use when x is a low-cardinality categorical column
+                      (fewer than ~15 distinct values like product category, region name) —
+                      use grouped_bar or bar instead for those comparisons
+                      (e.g. price vs. units sold, age vs. salary — good scatter use cases)
 - "histogram"       → distribution of a single numeric column; set y to ""; reveals spread and outliers
                       (e.g. order value distribution, age distribution)
 - "box"             → statistical spread — median, quartiles, outliers — for a numeric column grouped by a category;
@@ -90,13 +97,25 @@ Common high-value triplets for business questions:
 - "financial breakdown"             → waterfall, bar, treemap
 - "correlation analysis"            → scatter, histogram, box
 - "period-over-period growth/change"→ bar (y=pct_change), area (y=pct_change), waterfall
+- "growth/change broken down by category" → grouped_bar (x=period, y=pct_change, group=category), small_multiples, line
+
+IMPORTANT — multiple metric columns (e.g. cogs + revenue, actual + budget, metric_a + metric_b):
+If the SQL result contains a categorical x-axis column (like category, region, product name)
+and TWO OR MORE numeric metric columns of the same unit (e.g. both in USD, both counts),
+ALWAYS use grouped_bar as the FIRST option (x=category col, y=one metric col, group will auto-pivot),
+NOT a plain bar. A plain bar can only show one metric at a time, which hides the comparison.
+Do NOT suggest scatter for this pattern — scatter is for continuous numeric x-axes and correlation analysis,
+not for categorical comparisons with a small number of groups.
 
 IMPORTANT — growth and change queries:
 If the result contains a column whose name includes "pct", "change", "growth", "delta",
 or "diff", the user almost certainly wants to SEE that column, not the raw value column.
 In that case:
 - Set y to the change/pct column (e.g. pct_change) for the primary chart option.
-- Use a bar chart as the first option — bars make positive vs. negative change immediately visible.
+- If the data also has a category/group dimension (e.g. product category, region, territory),
+  use grouped_bar as the first option with x=period col, y=pct_change, group=category col.
+  This shows each category's change side by side per period — far more informative than a flat bar.
+- If there is NO category dimension, use a plain bar chart as the first option.
 - Use an area chart as the second option — the filled area above/below zero makes gains and losses vivid.
 - A waterfall chart is a valid third option for sequential period changes; use the pct column as y (not abs_change or revenue).
 - Only offer the raw value column (e.g. revenue) as a last resort, not the primary.
@@ -235,7 +254,7 @@ def _add_grouped_traces(
     # For line/area traces the data has already been sorted chronologically;
     # preserve that order instead of letting _aggregate re-sort alphabetically
     # (which breaks period labels like "Jan'22", "Feb'22", …).
-    _preserve = trace_type in ("line", "area")
+    _preserve = trace_type in ("line", "area") or x in ("period", "__period__")
     all_y: list[float] = []
     for i, grp in enumerate(series):
         subset = [r for r in data if _to_label(r.get(group, "")) == grp]
@@ -274,6 +293,30 @@ def generate_chart(
     effective_y_vals = y_vals  # default; overridden per chart type below
     _period_tick_labels: list[str] | None = None  # set by diverging area branch
 
+    # ── Multi-year month normalisation ────────────────────────────────────────
+    # When year + month columns exist and span >1 calendar year, replace the
+    # plain month x-axis with "Jan '25" style labels so each point is unique
+    # and chronological order is preserved across all chart types.
+    _cols = list(data[0].keys()) if data else []
+    if "year" in _cols and "month" in _cols and x == "month" and group != "year":
+        data = sorted(data, key=lambda r: (int(r.get("year", 0) or 0), int(r.get("month", 0) or 0)))
+        _uniq_years = set(int(r.get("year", 0) or 0) for r in data)
+        if len(_uniq_years) > 1:
+            def _mk_period(r) -> str:
+                mo = int(r.get("month", 0) or 0)
+                yr = int(r.get("year", 0) or 0)
+                abbr = calendar.month_abbr[mo] if 1 <= mo <= 12 else str(mo)
+                return f"{abbr} '{str(yr)[-2:]}"
+            data = [{**r, "__period__": _mk_period(r)} for r in data]
+            x = "__period__"
+            x_vals = [row["__period__"] for row in data]
+            y_vals = []
+            for _r in data:
+                try:
+                    y_vals.append(float(_r.get(y, 0) or 0))
+                except (TypeError, ValueError):
+                    y_vals.append(0.0)
+
     # ── Chart type dispatch ────────────────────────────────────────────────────
     if chart_type == "grouped_bar":
         effective_y_vals = _add_grouped_traces(fig, data, x, y, group, "bar")
@@ -281,10 +324,6 @@ def generate_chart(
 
     elif chart_type == "small_multiples":
         # Sort data chronologically so period labels appear in the right order
-        _sm_cols = list(data[0].keys()) if data else []
-        if "year" in _sm_cols and "month" in _sm_cols:
-            data = sorted(data, key=lambda r: (int(r.get("year", 0) or 0), int(r.get("month", 0) or 0)))
-
         panels = list(dict.fromkeys(_to_label(row.get(facet, "")) for row in data))
 
         # Cap at 6 panels — keep the top panels by total y value
@@ -315,7 +354,7 @@ def generate_chart(
         for idx, panel in enumerate(panels):
             r, c = idx // ncols + 1, idx % ncols + 1
             subset = [row for row in data if _to_label(row.get(facet, "")) == panel]
-            px_vals, py_vals = _aggregate(subset, x, y, preserve_order=(x == "period"))
+            px_vals, py_vals = _aggregate(subset, x, y, preserve_order=x in ("period", "__period__"))
             fig.add_trace(go.Bar(
                 x=px_vals, y=py_vals,
                 marker_color=_sm_palette[idx],
@@ -336,8 +375,8 @@ def generate_chart(
         # produce stacked bars in a single Plotly trace even with barmode="group".
         # Aggregating (summing) gives one clean bar per x label.
         # Preserve insertion order for period labels so the axis stays chronological.
-        bx, by = _aggregate(data, x, y, preserve_order=(x == "period"))
-        if x == "period":
+        bx, by = _aggregate(data, x, y, preserve_order=x in ("period", "__period__"))
+        if x in ("period", "__period__"):
             bar_colors = ["#4CE8A0" if v >= 0 else "#E84C6B" for v in by]
         else:
             n_bars = len(bx)
@@ -365,29 +404,20 @@ def generate_chart(
         # (year, month) first, then rebuild x_vals/y_vals from the sorted data.
         # The chart_agent pre-sort only fires when rate columns are present, so
         # plain "monthly revenue" queries arrive unsorted here.
-        _line_cols = list(data[0].keys()) if data else []
-        if "year" in _line_cols and "month" in _line_cols:
-            data = sorted(data, key=lambda r: (int(r.get("year", 0) or 0), int(r.get("month", 0) or 0)))
-            x_vals = [_to_label(row.get(x, "")) for row in data]
-            y_vals = []
-            for _r in data:
-                try:
-                    y_vals.append(float(_r.get(y, 0) or 0))
-                except (TypeError, ValueError):
-                    y_vals.append(0.0)
         if group:
             effective_y_vals = _add_grouped_traces(fig, data, x, y, group, "line")
         else:
+            _presorted = x in ("period", "__period__")
             pairs = sorted(zip(x_vals, y_vals), key=lambda p: _sort_key(p[0]))
-            sx = [p[0] for p in pairs] if x != "period" else x_vals
-            sy = [p[1] for p in pairs] if x != "period" else y_vals
+            sx = x_vals if _presorted else [p[0] for p in pairs]
+            sy = y_vals if _presorted else [p[1] for p in pairs]
             # Guard: if x is purely categorical (non-numeric strings, non-temporal),
             # a connected line is misleading — render as a bar instead.
             _all_str_x = sx and all(
                 v not in _MONTH_NUMS and not v.isdigit()
                 for v in sx if v != ""
             )
-            if _all_str_x and x != "period":
+            if _all_str_x and x not in ("period", "__period__"):
                 bar_colors = [_PALETTE[i % len(_PALETTE)] for i in range(len(sx))]
                 fig.add_trace(go.Bar(x=sx, y=sy, name=y, marker_color=bar_colors, hovertemplate=hover))
                 fig.update_layout(barmode="group")
@@ -399,7 +429,7 @@ def generate_chart(
     elif chart_type == "area":
         if group:
             effective_y_vals = _add_grouped_traces(fig, data, x, y, group, "area")
-        elif x == "period":
+        elif x in ("period", "__period__"):
             # Diverging fill with interpolated zero crossings so each segment's fill
             # boundary exactly follows the data line. Uses numeric x internally so
             # crossing position can be fractionally interpolated between ticks.
@@ -589,7 +619,7 @@ def generate_chart(
         all_stack_y: list[float] = []
         for i, grp in enumerate(series):
             subset = [r for r in data if _to_label(r.get(group, "")) == grp]
-            gx, gy = _aggregate(subset, x, y, preserve_order=(x == "period"))
+            gx, gy = _aggregate(subset, x, y, preserve_order=x in ("period", "__period__"))
             if chart_type == "normalized_bar":
                 gy = [v / x_totals[xk] * 100 if x_totals.get(xk) else 0 for xk, v in zip(gx, gy)]
             all_stack_y.extend(gy)
@@ -601,13 +631,13 @@ def generate_chart(
 
     elif chart_type == "bar-line":
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        bx, by = _aggregate(data, x, y, preserve_order=(x == "period"))
+        bx, by = _aggregate(data, x, y, preserve_order=x in ("period", "__period__"))
         fig.add_trace(
             go.Bar(x=bx, y=by, name=y_label or y, marker_color=_PALETTE[0], hovertemplate=hover),
             secondary_y=False,
         )
         if y2:
-            l2x, l2y = _aggregate(data, x, y2, preserve_order=(x == "period"), mean=True)
+            l2x, l2y = _aggregate(data, x, y2, preserve_order=x in ("period", "__period__"), mean=True)
             fig.add_trace(
                 go.Scatter(x=l2x, y=l2y, mode="lines+markers", name=y2_label or y2,
                            line=dict(color=_PALETTE[3], width=2),
@@ -646,7 +676,7 @@ def generate_chart(
         if all_x and all(v in _MONTH_NUMS for v in all_x):
             xaxis_extra = dict(categoryorder="array", categoryarray=_MONTH_NUMS,
                                tickvals=_MONTH_NUMS, ticktext=_MONTH_ABBRS)
-        elif x == "period":
+        elif x in ("period", "__period__"):
             if _period_tick_labels:
                 # Diverging area used numeric x — map indices back to period labels
                 xaxis_extra = dict(
@@ -683,7 +713,9 @@ def generate_chart(
             yaxis_cfg = dict(title="% of Total", tickformat=",.0f", showgrid=True,
                              gridwidth=1, range=[0, 100])
         else:
-            yaxis_cfg = dict(title=y_label or y, tickformat=",.0f", showgrid=True, gridwidth=1)
+            _y_abs_max = max(abs(v) for v in effective_y_vals) if effective_y_vals else 1
+            _tick_fmt = ",.2f" if _y_abs_max < 10 else (",.1f" if _y_abs_max < 100 else ",.0f")
+            yaxis_cfg = dict(title=y_label or y, tickformat=_tick_fmt, showgrid=True, gridwidth=1)
             if chart_type != "histogram":
                 y_min = min(effective_y_vals) if effective_y_vals else 0
                 y_range = (
@@ -770,6 +802,7 @@ def chart_agent(state: AgentState) -> AgentState:
         x_col = spec.get("x", "")
         y_col = spec.get("y", "")
         y2_col = spec.get("y2", "")
+        group_col = spec.get("group", "")
 
         # Fallback if LLM picked a column that doesn't exist
         if x_col not in actual_cols:
@@ -779,12 +812,67 @@ def chart_agent(state: AgentState) -> AgentState:
         if y2_col and y2_col not in actual_cols:
             y2_col = ""
 
+        # Auto-pivot wide → long for grouped/stacked/normalized bar when the
+        # data has multiple numeric metric columns but no categorical group column.
+        # E.g. {category, cogs, revenue} → {category, value, metric} so each
+        # metric becomes its own series rather than only one being shown.
+        _render_data = sql_result
+        if chart_type in ("grouped_bar", "stacked_bar", "normalized_bar"):
+            def _is_numeric_col(col):
+                for r in sql_result:
+                    v = r.get(col)
+                    if v is None:
+                        continue
+                    try:
+                        float(v)
+                        return True
+                    except (TypeError, ValueError):
+                        return False
+                return False
+
+            _grp_missing = not group_col or group_col not in actual_cols
+            _grp_same_as_x = group_col == x_col
+            if _grp_missing or _grp_same_as_x:
+                # Find all numeric columns except x_col, excluding ratio/percentage
+                # derived columns that don't share the same unit as the primary metric.
+                _ratio_keywords = (
+                    "percent", "pct", "_rate", "rate_", "_ratio", "ratio_",
+                    "_margin", "margin_", "_share", "share_", "_factor",
+                )
+                def _is_ratio_col(col: str) -> bool:
+                    cl = col.lower()
+                    return any(kw in cl for kw in _ratio_keywords)
+
+                _numeric_cols = [
+                    c for c in actual_cols
+                    if c != x_col and _is_numeric_col(c) and not _is_ratio_col(c)
+                ]
+                # If the LLM-specified y_col is present and numeric, further restrict
+                # to only columns whose magnitude is within 3 orders of the y_col median.
+                if y_col and y_col in actual_cols and _is_numeric_col(y_col):
+                    def _col_magnitude(col):
+                        vals = [float(r[col]) for r in sql_result if r.get(col) is not None]
+                        return max(abs(v) for v in vals) if vals else 0
+                    _y_mag = _col_magnitude(y_col)
+                    if _y_mag > 0:
+                        _numeric_cols = [
+                            c for c in _numeric_cols
+                            if _col_magnitude(c) >= _y_mag / 1000
+                        ]
+                if len(_numeric_cols) >= 2:
+                    _render_data = [
+                        {x_col: r[x_col], "value": r[c], "metric": c}
+                        for r in sql_result for c in _numeric_cols
+                    ]
+                    y_col = "value"
+                    group_col = "metric"
+
         try:
             figure_json = generate_chart(
-                sql_result, chart_type, x_col, y_col,
+                _render_data, chart_type, x_col, y_col,
                 spec.get("title", "Chart"),
                 spec.get("x_label", ""), spec.get("y_label", ""),
-                spec.get("group", ""), spec.get("facet", ""),
+                group_col, spec.get("facet", ""),
                 y2_col, spec.get("y2_label", ""),
             )
             options.append({"figure_json": figure_json, "chart_type": chart_type, "title": spec.get("title", "Chart")})

@@ -19,5 +19,6 @@
   "t1.firstname": "UndefinedColumn confirmed by PostgreSQL",
   "t2.firstname": "UndefinedColumn confirmed by PostgreSQL",
   "t2.line_revenue": "UndefinedColumn confirmed by PostgreSQL",
-  "terminationdate": "UndefinedColumn confirmed by PostgreSQL"
+  "terminationdate": "UndefinedColumn confirmed by PostgreSQL",
+  "t2.unitprice": "UndefinedColumn confirmed by PostgreSQL"
 }

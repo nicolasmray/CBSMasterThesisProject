@@ -48,6 +48,8 @@ _DIM_KEYWORDS = ("year", "date", "month", "quarter", "week", "period", "day")
 _RATE_KEYWORDS = ("pct", "percent", "growth", "change", "rate", "ratio", "diff", "delta")
 # LAG/LEAD intermediates — used only for calculation, excluded from summaries entirely
 _INTERMEDIATE_PREFIXES = ("prev_", "lag_", "lead_", "next_")
+# Ranked list formatting helpers
+_ID_SUFFIXES = ("id", "key", "code", "number", "num")
 
 
 def _is_dimension(col: str, nums: list[float]) -> bool:
@@ -184,6 +186,59 @@ def _chart_note(chart_spec: dict) -> str:
     )
 
 
+def _is_id_col(col: str) -> bool:
+    cl = col.lower().replace("_", "")
+    return any(cl.endswith(s) for s in _ID_SUFFIXES)
+
+
+def _format_ranked_list(rows: list[dict]) -> str:
+    """Numbered list for ranking results: `rank. Label — $value`.
+
+    Hides ID columns, merges firstname+lastname, prefixes $ on currency metrics.
+    """
+    if not rows:
+        return "(no rows)"
+
+    label_cols, numeric_cols = _classify_columns(rows)
+    # Drop ID columns — they're in the raw table below
+    label_cols = [c for c in label_cols if not _is_id_col(c)]
+
+    def _row_label(r: dict) -> str:
+        # Merge firstname + lastname if both present
+        cols_lower = {c.lower(): c for c in label_cols}
+        if "firstname" in cols_lower and "lastname" in cols_lower:
+            fn = str(r.get(cols_lower["firstname"], "")).strip()
+            ln = str(r.get(cols_lower["lastname"], "")).strip()
+            other = [c for c in label_cols if c not in (cols_lower["firstname"], cols_lower["lastname"])]
+            parts = [f"{fn} {ln}".strip()] + [str(r.get(c, "")) for c in other]
+        else:
+            parts = [str(r.get(c, "")) for c in label_cols]
+        return " · ".join(p for p in parts if p) or "—"
+
+    def _fmt_metric(col: str, r: dict) -> str:
+        try:
+            val = float(r.get(col))  # type: ignore[arg-type]
+            prefix = "$" if any(kw in col.lower() for kw in _METRIC_KEYWORDS) else ""
+            return f"{prefix}{val:,.2f}" if val != int(val) else f"{prefix}{int(val):,}"
+        except (TypeError, ValueError):
+            return str(r.get(col, "—"))
+
+    primary = numeric_cols[0] if numeric_cols else None
+    extras = numeric_cols[1:3]
+
+    lines = []
+    for rank, r in enumerate(rows, 1):
+        label = _row_label(r)
+        if primary:
+            val_str = _fmt_metric(primary, r)
+            extra_str = ", ".join(f"{em}: `{_fmt_metric(em, r)}`" for em in extras)
+            suffix = f"  ({extra_str})" if extra_str else ""
+            lines.append(f"{rank}. **{label}** — `{val_str}`{suffix}")
+        else:
+            lines.append(f"{rank}. **{label}**")
+    return "\n".join(lines)
+
+
 def _format_rows(rows: list[dict]) -> str:
     """Format query rows for display in the final answer.
 
@@ -206,20 +261,11 @@ def _format_rows(rows: list[dict]) -> str:
             f"{c}: `{_fmt_value(rows[0].get(c))}`" for c in cols
         )
 
-    # ── Two columns: same card style as 3+ cols for consistency ──────────────
-    if len(cols) == 2:
-        blocks = []
-        for r in rows:
-            items = "  ·  ".join(f"{c}: `{_fmt_value(r.get(c))}`" for c in cols)
-            blocks.append(items)
-        return "\n\n".join(blocks)
-
-    # ── 3+ columns: bulleted row per entry, all columns styled equally ────────
-    blocks = []
-    for r in rows:
-        items = "  ·  ".join(f"{c}: `{_fmt_value(r.get(c))}`" for c in cols)
-        blocks.append(items)
-    return "\n\n".join(blocks)
+    # ── 2+ columns: one line per row, all columns styled equally ─────────────
+    return "\n\n".join(
+        "  ·  ".join(f"{c}: `{_fmt_value(r.get(c))}`" for c in cols)
+        for r in rows
+    )
 
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
@@ -376,10 +422,17 @@ def response_agent(state: AgentState) -> AgentState:
                 insight = None
 
         else:
-            # Part 1 — show all rows formatted (≤ threshold, fits inline)
+            # Part 1 — show all rows formatted (≤ threshold, fits inline).
+            # Use ranked list whenever there is at least one label column and one
+            # numeric column — this covers both explicit ranking queries ("top 10")
+            # and any breakdown ("by territory", "by category") where a clean
+            # label → value format is more readable than the raw col: value style.
+            _lc, _nc = _classify_columns(sql_result)
+            use_ranked = bool(_lc) and bool(_nc)
+            formatter = _format_ranked_list if use_ranked else _format_rows
             facts_block = (
                 f"Query returned {n_rows} row(s):\n\n"
-                + _format_rows(sql_result)
+                + formatter(sql_result)
             )
 
             # Part 2 — LLM adds business context only; receives no raw numbers
