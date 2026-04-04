@@ -164,7 +164,10 @@ Your job:
     sales, production, purchasing).
     Table aliases MUST be single words with no dots — "pc", "psc", "cat" are valid;
     "pr.pc", "prod.cat" are INVALID and will cause a parse error.
-16. JOIN column selection — always use the most specific foreign key available, not the
+    Column references outside FROM/JOIN must have EXACTLY ONE dot: alias.column.
+    Two-dot forms like alias.x.column or schema.table.column are NEVER valid in
+    SELECT, WHERE, GROUP BY, or ON clauses — use the alias alone.
+17. JOIN column selection — always use the most specific foreign key available, not the
     most common one. When a table has a named FK column (e.g. salespersonid, storeid,
     customerid, vendorid) pointing to another table, use that named column for the JOIN.
     Only fall back to businessentityid when no named FK exists for the relationship.
@@ -191,6 +194,22 @@ Your job:
       join from there — do not route through intermediate entity tables.
     Wrong:  soh → salesperson → salesterritory   (excludes online orders with NULL salespersonid)
     Right:  soh → salesterritory via soh.territoryid
+20. Date arithmetic — when computing a duration between two date/timestamp columns,
+    ALWAYS emit BOTH of these columns (never just one):
+        ROUND(CAST(AVG(EXTRACT(EPOCH FROM (col_end - col_start)) / 86400.0) AS numeric), 2) AS average_days,
+        ROUND(CAST(AVG(EXTRACT(EPOCH FROM (col_end - col_start)) / 3600.0)  AS numeric), 1) AS average_hours
+    average_days is the primary human-readable metric; average_hours gives sub-day precision
+    so the reader can see e.g. "7.34 days (176.2 hours)".
+    Do NOT use EXTRACT(EPOCH FROM ...) without dividing — epoch is seconds, not days or hours.
+    Do NOT cast to ::date before subtracting — that discards time-of-day and forces integer days.
+    Apply a validity filter where appropriate (e.g. shipdate IS NOT NULL, shipdate >= orderdate).
+21. Cost and standard cost — always use p.standardcost directly from production.product.
+    Do NOT join history or audit tables (e.g. productcosthistory, pricehistory) to retrieve
+    the "current" cost — these tables have one row per change event and will cause silent
+    row duplication or row loss when inner-joined to a fact table.
+    Do NOT join the same dimension table twice under different aliases when one join suffices.
+    Use the column from the single join you already have (e.g. p.standardcost, not pr.standardcost
+    from a redundant second join to the same table).
 """
 
 SQL_RETRY_PROMPT = """\
@@ -373,6 +392,7 @@ async def _run_sql(state: AgentState) -> AgentState:
     user_query = state["user_query"]
     plan = state.get("plan", "")
     retry_count = state.get("retry_count", 0)
+    rag_context = state.get("rag_context", "")
 
     server_params = get_server_params()
     async with stdio_client(server_params) as (read_stream, write_stream):
@@ -411,12 +431,13 @@ async def _run_sql(state: AgentState) -> AgentState:
                 )
 
             # Initial SQL generation
+            rag_hint = f"\n\nKnowledge base context:\n{rag_context}" if rag_context else ""
             messages = [
                 SystemMessage(content=effective_system_prompt),
                 HumanMessage(
                     content=(
                         f"Schema:\n{schema_str}\n\n"
-                        f"Plan: {plan}{date_hint}\n\n"
+                        f"Plan: {plan}{date_hint}{rag_hint}\n\n"
                         f"Question: {user_query}"
                     )
                 ),

@@ -20,6 +20,11 @@ Your ONLY job is to:
    • "sql"    — the question requires querying structured data in a database (metrics, counts, aggregations, lookups).
    • "chart"  — the question explicitly asks for a chart, graph, visualization, or plot AND requires data from the database.
    • "hybrid" — the question needs BOTH database data AND document/knowledge-base context to answer properly.
+              Use "hybrid" when the question involves a derived or non-obvious metric whose formula
+              must be looked up — e.g. profit margin, gross margin, COGS, cost of goods sold,
+              cost vs revenue, CLV, LTV, churn rate, retention rate, conversion rate,
+              average order value, inventory turnover, days on hand.
+              These require a formula from the knowledge base AND a database query to compute them.
 3. Write a short plan (1-3 sentences) describing how downstream agents should handle the request.
 
 Respond with ONLY a JSON object (no markdown fences) with exactly two keys:

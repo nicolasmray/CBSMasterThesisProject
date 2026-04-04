@@ -5,7 +5,7 @@ Routes:
     "rag"    → rag_agent → response_agent → END
     "sql"    → sql_agent → response_agent → END
     "chart"  → sql_agent → chart_agent → response_agent → END
-    "hybrid" → sql_agent → rag_agent → response_agent → END
+    "hybrid" → rag_agent → sql_agent → chart_agent → response_agent → END
 """
 
 from langgraph.graph import StateGraph, END
@@ -28,13 +28,9 @@ def _route_by_intent(state: AgentState) -> str:
         Name of the next node to execute.
     """
     intent = state.get("intent", "sql")
-    if intent == "rag":
+    if intent in ("rag", "hybrid"):
         return "rag_agent"
-    elif intent == "chart":
-        return "sql_agent"
-    elif intent == "hybrid":
-        return "sql_agent"
-    else:  # "sql" or fallback
+    else:  # "sql", "chart", or fallback
         return "sql_agent"
 
 
@@ -48,10 +44,8 @@ def _route_after_sql(state: AgentState) -> str:
         Name of the next node.
     """
     intent = state.get("intent", "sql")
-    if intent == "chart":
+    if intent in ("chart", "hybrid"):
         return "chart_agent"
-    elif intent == "hybrid":
-        return "rag_agent"
     else:
         return "response_agent"
 
@@ -84,8 +78,12 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # RAG agent always goes to response
-    graph.add_edge("rag_agent", "response_agent")
+    # RAG agent: pure rag → response; hybrid → sql
+    graph.add_conditional_edges(
+        "rag_agent",
+        lambda s: "sql_agent" if s.get("intent") == "hybrid" else "response_agent",
+        {"sql_agent": "sql_agent", "response_agent": "response_agent"},
+    )
 
     # SQL agent conditionally goes to chart, rag (hybrid), or response
     graph.add_conditional_edges(
