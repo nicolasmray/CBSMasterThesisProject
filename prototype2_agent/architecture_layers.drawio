@@ -1,0 +1,233 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="75IZcjxlU8KpHeMqLzu-" name="Page-1">
+    <mxGraphModel dx="1664" dy="1055" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1580" pageHeight="840" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bg_l2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6c8ebf;" value="" vertex="1">
+          <mxGeometry height="295" width="1060" x="50" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_l1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="" vertex="1">
+          <mxGeometry height="200" width="1060" x="50" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_res" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" value="" vertex="1">
+          <mxGeometry height="175" width="1060" x="50" y="615" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_l3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;" value="" vertex="1">
+          <mxGeometry height="730" width="400" x="1140" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr_l2" parent="1" style="text;html=1;strokeColor=#6c8ebf;fillColor=#6c8ebf;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#ffffff;fontStyle=1;fontSize=11;" value="LAYER 2 — ORCHESTRATION  (LangGraph / LangChain)" vertex="1">
+          <mxGeometry height="26" width="1060" x="50" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr_l1" parent="1" style="text;html=1;strokeColor=#d6b656;fillColor=#d6b656;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#ffffff;fontStyle=1;fontSize=11;" value="LAYER 1 — INTERFACE  (MCP Server / FastMCP)" vertex="1">
+          <mxGeometry height="26" width="1060" x="50" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr_res" parent="1" style="text;html=1;strokeColor=#666666;fillColor=#666666;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#ffffff;fontStyle=1;fontSize=11;" value="EXTERNAL RESOURCES" vertex="1">
+          <mxGeometry height="26" width="1060" x="50" y="615" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr_l3" parent="1" style="text;html=1;strokeColor=#d79b00;fillColor=#d79b00;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#ffffff;fontStyle=1;fontSize=11;" value="LAYER 3 — KNOWLEDGE  (RAG Pipeline)" vertex="1">
+          <mxGeometry height="26" width="400" x="1140" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="langgraph" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="&lt;b&gt;LangGraph&lt;/b&gt;&lt;br&gt;StateGraph + DAG&lt;br&gt;Conditional routing" vertex="1">
+          <mxGeometry height="60" width="145" x="65" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ag_orch" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="&lt;b&gt;Orchestrator&lt;/b&gt;&lt;br&gt;Agent" vertex="1">
+          <mxGeometry height="60" width="120" x="235" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ag_rag" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=10;" value="&lt;b&gt;RAG&lt;/b&gt;&lt;br&gt;Agent" vertex="1">
+          <mxGeometry height="60" width="120" x="373" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ag_sql" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#6c8ebf;fontColor=#ffffff;strokeColor=#4a6ea8;fontSize=10;" value="&lt;b&gt;SQL&lt;/b&gt;&lt;br&gt;Agent" vertex="1">
+          <mxGeometry height="60" width="120" x="511" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ag_chart" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#82b366;fontColor=#ffffff;strokeColor=#6a9a52;fontSize=10;" value="&lt;b&gt;Chart&lt;/b&gt;&lt;br&gt;Agent" vertex="1">
+          <mxGeometry height="60" width="120" x="649" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ag_resp" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="&lt;b&gt;Response&lt;/b&gt;&lt;br&gt;Agent" vertex="1">
+          <mxGeometry height="60" width="120" x="787" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ag12" edge="1" parent="1" source="ag_orch" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" target="ag_rag" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ag23" edge="1" parent="1" source="ag_orch" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" target="ag_sql" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ag34" edge="1" parent="1" source="ag_sql" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" target="ag_chart" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ag45a" edge="1" parent="1" source="ag_rag" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" target="ag_resp" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="433" y="85" />
+              <mxPoint x="847" y="85" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ag45b" edge="1" parent="1" source="ag_chart" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" target="ag_resp" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="agent_state" parent="1" style="shape=mxgraph.flowchart.data;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="AgentState TypedDict&lt;br&gt;(13 fields — shared pipeline state)" vertex="1">
+          <mxGeometry height="48" width="255" x="65" y="186" as="geometry" />
+        </mxCell>
+        <mxCell id="llm_abstraction" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="LLM Abstraction (LangChain)&lt;br&gt;ChatGroq (meta-llama/llama-4-scout) | ChatOllama (llama3.1)&lt;br&gt;API key rotation pool — temperature=0 all agents" vertex="1">
+          <mxGeometry height="48" width="560" x="345" y="186" as="geometry" />
+        </mxCell>
+        <mxCell id="routing_note" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontStyle=2;fontColor=#336699;" value="Conditional routing: intent → rag_agent | sql_agent | chart_agent → response_agent" vertex="1">
+          <mxGeometry height="24" width="975" x="65" y="254" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp_arrow" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=3;strokeColor=#d6b656;fontStyle=1;fontSize=10;endArrow=block;startArrow=block;startFill=1;endFill=1;" value="MCP stdio transport protocol">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="580" y="356" as="sourcePoint" />
+            <mxPoint x="580" y="385" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mcp_server" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="&lt;b&gt;MCP Server&lt;/b&gt;&lt;br&gt;(FastMCP)" vertex="1">
+          <mxGeometry height="55" width="140" x="65" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tool_sql" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="run_sql_query" vertex="1">
+          <mxGeometry height="50" width="155" x="230" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tool_schema" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="get_schema_snapshot" vertex="1">
+          <mxGeometry height="50" width="165" x="398" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tool_search" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="semantic_search" vertex="1">
+          <mxGeometry height="50" width="155" x="576" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tool_embed" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="embed_and_store" vertex="1">
+          <mxGeometry height="50" width="155" x="744" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp1" edge="1" parent="1" source="mcp_server" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" target="tool_sql" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp2" edge="1" parent="1" source="mcp_server" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" target="tool_schema" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp3" edge="1" parent="1" source="mcp_server" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" target="tool_search" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp4" edge="1" parent="1" source="mcp_server" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" target="tool_embed" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="boundary_note" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontStyle=2;fontColor=#996600;" value="I/O boundary — LLM agents never access the database directly; all queries go through MCP tools" vertex="1">
+          <mxGeometry height="24" width="975" x="65" y="484" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l1_pg" edge="1" parent="1" source="tool_sql" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;fontSize=9;" target="db_postgres" value="SQL queries">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l1_vec1" edge="1" parent="1" source="tool_search" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;fontSize=9;" target="db_pgvec" value="vector search">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l1_vec2" edge="1" parent="1" source="tool_embed" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;fontSize=9;" target="db_pgvec" value="store embeddings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="db_postgres" parent="1" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;Relational database&lt;br&gt;(AdventureWorks schema)" vertex="1">
+          <mxGeometry height="110" width="145" x="160" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="db_pgvec" parent="1" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="&lt;b&gt;pgvector&lt;/b&gt;&lt;br&gt;Document store&lt;br&gt;(HNSW index, cosine)" vertex="1">
+          <mxGeometry height="110" width="145" x="660" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_sec1" parent="1" style="text;html=1;strokeColor=none;fillColor=#f0a30a;align=left;verticalAlign=middle;spacingLeft=6;fontStyle=1;fontSize=10;fontColor=#000000;" value="↓  Ingestion Pipeline" vertex="1">
+          <mxGeometry height="20" width="400" x="1140" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_ingest" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Document Ingestion&lt;br&gt;(PDF / DOCX / TXT source files)" vertex="1">
+          <mxGeometry height="45" width="364" x="1158" y="115" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_chunk" parent="1" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Text Chunking&lt;br&gt;(RecursiveCharacterTextSplitter, overlap=40)" vertex="1">
+          <mxGeometry height="45" width="364" x="1158" y="173" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_embed" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Embedding via Ollama&lt;br&gt;(mxbai-embed-large — local, no API key)" vertex="1">
+          <mxGeometry height="45" width="364" x="1158" y="231" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_div1" edge="1" parent="1" style="endArrow=none;strokeColor=#d79b00;strokeWidth=1;dashed=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1148" y="288" as="sourcePoint" />
+            <mxPoint x="1532" y="288" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l3_sec2" parent="1" style="text;html=1;strokeColor=none;fillColor=#f0a30a;align=left;verticalAlign=middle;spacingLeft=6;fontStyle=1;fontSize=10;fontColor=#000000;" value="↑↓  Retrieval Pipeline" vertex="1">
+          <mxGeometry height="20" width="400" x="1140" y="292" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_hnsw" parent="1" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="HNSW Vector Index&lt;br&gt;(pgvector — cosine similarity)" vertex="1">
+          <mxGeometry height="55" width="364" x="1158" y="316" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_threshold" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Similarity threshold gate&lt;br&gt;(score ≥ 0.55 → include; else fallback)" vertex="1">
+          <mxGeometry height="70" width="364" x="1158" y="384" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_rerank" parent="1" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="LLM Relevance Reranking&lt;br&gt;(filters chunks by question relevance)" vertex="1">
+          <mxGeometry height="45" width="364" x="1158" y="468" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_div2" edge="1" parent="1" style="endArrow=none;strokeColor=#d79b00;strokeWidth=1;dashed=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1148" y="526" as="sourcePoint" />
+            <mxPoint x="1532" y="526" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="l3_sec3" parent="1" style="text;html=1;strokeColor=none;fillColor=#f0a30a;align=left;verticalAlign=middle;spacingLeft=6;fontStyle=1;fontSize=10;fontColor=#000000;" value="→  Context Provision (to Agents)" vertex="1">
+          <mxGeometry height="20" width="400" x="1140" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_schema" parent="1" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Schema Context&lt;br&gt;(FK snapshot, table/column list for SQL Agent)" vertex="1">
+          <mxGeometry height="50" width="364" x="1158" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_banned" parent="1" style="shape=mxgraph.flowchart.data;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=10;" value="Banned Columns Registry&lt;br&gt;(persisted non-existent column blocklist)" vertex="1">
+          <mxGeometry height="50" width="364" x="1158" y="618" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l3a" edge="1" parent="1" source="l3_ingest" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" target="l3_chunk" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l3b" edge="1" parent="1" source="l3_chunk" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" target="l3_embed" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l3c" edge="1" parent="1" source="l3_embed" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;fontSize=9;" target="l3_hnsw" value="stores vectors">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l3d" edge="1" parent="1" source="l3_hnsw" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" target="l3_threshold" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l3e" edge="1" parent="1" source="l3_threshold" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;fontSize=9;" target="l3_rerank" value="pass">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ctx_rag" edge="1" parent="1" source="l3_rerank" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;fontSize=9;endArrow=block;endFill=1;" target="ag_rag" value="rag_chunks + rag_context">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1140" y="490" />
+              <mxPoint x="920" y="490" />
+              <mxPoint x="920" y="270" />
+              <mxPoint x="433" y="270" />
+              <mxPoint x="433" y="156" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ctx_sql" edge="1" parent="1" source="l3_schema" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;fontSize=9;endArrow=block;endFill=1;" target="ag_sql" value="schema_context + banned_columns">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1140" y="580" />
+              <mxPoint x="940" y="580" />
+              <mxPoint x="940" y="280" />
+              <mxPoint x="571" y="280" />
+              <mxPoint x="571" y="156" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ctx_pgvec" edge="1" parent="1" source="l3_hnsw" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;fontSize=9;endArrow=block;startArrow=block;startFill=1;endFill=1;" target="db_pgvec" value="read / write vectors">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1140" y="343" />
+              <mxPoint x="1100" y="343" />
+              <mxPoint x="1100" y="700" />
+              <mxPoint x="805" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_bg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#999999;" value="" vertex="1">
+          <mxGeometry height="140" width="280" x="905" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=10;spacingLeft=6;" value="Technology Stack" vertex="1">
+          <mxGeometry height="22" width="280" x="920" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_body" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=9;spacingLeft=6;spacingTop=4;" value="&lt;b&gt;LLM (inference):&lt;/b&gt; Groq API · meta-llama/llama-4-scout-17b&lt;br&gt;&lt;b&gt;Fallback LLM:&lt;/b&gt; Ollama · llama3.1 (local)&lt;br&gt;&lt;b&gt;Embeddings:&lt;/b&gt; Ollama · mxbai-embed-large (local)&lt;br&gt;&lt;b&gt;Vector index:&lt;/b&gt; pgvector HNSW (cosine, dim=1024)&lt;br&gt;&lt;b&gt;Transport:&lt;/b&gt; MCP stdio (FastMCP)" vertex="1">
+          <mxGeometry height="112" width="280" x="920" y="662" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
