@@ -1,491 +1,367 @@
-<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2380" pageHeight="1350" math="0" shadow="0">
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="794" pageHeight="1169" math="0" shadow="0">
   <root>
     <mxCell id="0" />
     <mxCell id="1" parent="0" />
 
-    <!-- ═══════════════════════════════════════════════════════════
-         BACKGROUND SECTION LABELS (decorative swimlanes)
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="bg_rag" value="RAG Path" style="text;html=1;strokeColor=#d79b00;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=8;overflow=hidden;rotatable=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="30" y="420" width="460" height="640" as="geometry" />
+    <!-- TITLE -->
+    <mxCell id="title" value="Multi-Agent BI Assistant — Pipeline Flow" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="10" y="10" width="774" height="28" as="geometry" />
     </mxCell>
 
-    <mxCell id="bg_sql" value="SQL Path" style="text;html=1;strokeColor=#6c8ebf;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=8;overflow=hidden;rotatable=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="570" y="420" width="560" height="640" as="geometry" />
+    <!-- ═══ FRONTEND ═══ -->
+    <mxCell id="frontend" value="&lt;b&gt;Frontend (Streamlit UI)&lt;/b&gt;" style="shape=mxgraph.flowchart.terminator;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="247" y="50" width="300" height="40" as="geometry" />
     </mxCell>
 
-    <mxCell id="bg_chart" value="Chart Path" style="text;html=1;strokeColor=#82b366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=8;overflow=hidden;rotatable=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1210" y="420" width="460" height="450" as="geometry" />
+    <mxCell id="receive_query" value="Receive user query" style="shape=mxgraph.flowchart.manual_input;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="297" y="108" width="200" height="38" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         FRONTEND
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="frontend" value="&lt;b&gt;Frontend (Streamlit UI)&lt;/b&gt;" style="shape=mxgraph.flowchart.terminator;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="590" y="30" width="520" height="50" as="geometry" />
+    <!-- ═══ ORCHESTRATOR (expanded) ═══ -->
+    <mxCell id="orchestrator" value="&lt;b&gt;Orchestrator Agent&lt;/b&gt;&lt;br&gt;① LLM: classify intent → rag | sql | chart | hybrid&lt;br&gt;Write 1–3 sentence execution plan → AgentState" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="172" y="166" width="400" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_1" value="① LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="530" y="163" width="42" height="20" as="geometry" />
     </mxCell>
 
-    <mxCell id="receive_query" value="Receive user query" style="shape=mxgraph.flowchart.manual_input;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="700" y="120" width="300" height="50" as="geometry" />
+    <!-- LLM node -->
+    <mxCell id="llm_node" value="&lt;b&gt;meta-llama/llama-4-scout-17b&lt;/b&gt;&lt;br&gt;Groq API · Ollama fallback · temp=0" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="596" y="170" width="172" height="57" as="geometry" />
+    </mxCell>
+    <mxCell id="e_llm" value="all LLM calls" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;endArrow=open;fontSize=8;" edge="1" source="llm_node" target="orchestrator" parent="1">
+      <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         ORCHESTRATOR
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="orchestrator" value="&lt;b&gt;Orchestrator Agent&lt;/b&gt;&lt;br&gt;1. Classify intent: rag | sql | chart | hybrid&lt;br&gt;2. Write execution plan (1–3 sentences)" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="590" y="210" width="520" height="75" as="geometry" />
+    <!-- ═══ ROUTE DIAMOND ═══ -->
+    <mxCell id="route_diamond" value="Route by intent" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="272" y="260" width="250" height="78" as="geometry" />
     </mxCell>
 
-    <mxCell id="route_diamond" value="Route by intent" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="700" y="330" width="300" height="100" as="geometry" />
+    <!-- ═══ SWIMLANE BACKGROUNDS ═══ -->
+    <mxCell id="bg_rag" value="RAG Path" style="text;html=1;strokeColor=#d79b00;fillColor=#FFE6CC;align=left;verticalAlign=top;spacingLeft=6;overflow=hidden;rotatable=0;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="10" y="350" width="218" height="360" as="geometry" />
+    </mxCell>
+    <mxCell id="bg_sql" value="SQL Path" style="text;html=1;strokeColor=#6c8ebf;fillColor=#DAE8FC;align=left;verticalAlign=top;spacingLeft=6;overflow=hidden;rotatable=0;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="238" y="350" width="266" height="410" as="geometry" />
+    </mxCell>
+    <mxCell id="bg_chart" value="Chart Path" style="text;html=1;strokeColor=#82b366;fillColor=#D5E8D4;align=left;verticalAlign=top;spacingLeft=6;overflow=hidden;rotatable=0;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="514" y="608" width="216" height="220" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         RAG PATH NODES
-    ═══════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════
+         RAG PATH — expanded internals
+    ═══════════════════════════════ -->
 
-    <mxCell id="rag_agent" value="&lt;b&gt;RAG Agent&lt;/b&gt;&lt;br&gt;Retrieve relevant document chunks from pgvector" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="75" y="470" width="370" height="60" as="geometry" />
+    <mxCell id="rag_agent" value="&lt;b&gt;RAG Agent&lt;/b&gt;" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#f0a30a;fontColor=#000000;strokeColor=#BD7000;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="18" y="367" width="196" height="38" as="geometry" />
     </mxCell>
 
-    <mxCell id="semantic_search" value="Semantic Search (pgvector)&lt;br&gt;Similarity threshold filtering" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="75" y="575" width="370" height="55" as="geometry" />
+    <mxCell id="rag_embed" value="Embed query&lt;br&gt;(Ollama · mxbai-embed-large)" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="18" y="416" width="196" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="rag_fallback" value="rag_fallback flag&lt;br&gt;Below threshold → fallback search (top-10 + LLM rerank)" style="shape=mxgraph.flowchart.data;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="75" y="675" width="370" height="55" as="geometry" />
+    <mxCell id="rag_search" value="pgvector HNSW search&lt;br&gt;cosine similarity · retrieve top-K" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="18" y="462" width="196" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="rag_chunks" value="rag_chunks: list[dict]&lt;br&gt;{content, score, source} per chunk" style="shape=mxgraph.flowchart.data;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="75" y="775" width="370" height="55" as="geometry" />
+    <mxCell id="rag_threshold" value="score ≥ 0.55?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d79b00;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="28" y="508" width="176" height="56" as="geometry" />
     </mxCell>
 
-    <mxCell id="rag_context" value="Formatted RAG context string&lt;br&gt;LLM-synthesised; passed to sql_agent (hybrid) or response_agent (rag)" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="75" y="875" width="370" height="65" as="geometry" />
+    <mxCell id="rag_rerank" value="② LLM Reranker&lt;br&gt;filter chunks by question relevance" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="18" y="575" width="196" height="36" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_2" value="② LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="172" y="572" width="42" height="20" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         SQL PATH NODES
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="sql_agent" value="&lt;b&gt;SQL Agent&lt;/b&gt;&lt;br&gt;Generate and execute SQL against PostgreSQL via MCP" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#6c8ebf;fontColor=#ffffff;strokeColor=#4a6ea8;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="620" y="470" width="460" height="60" as="geometry" />
+    <mxCell id="rag_context" value="rag_chunks · rag_context string&lt;br&gt;rag_fallback flag written to AgentState" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="18" y="622" width="196" height="48" as="geometry" />
     </mxCell>
 
-    <mxCell id="schema_ctx" value="schema_context: compact schema snapshot&lt;br&gt;FK snapshot + banned_columns filter applied" style="shape=mxgraph.flowchart.data;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="620" y="575" width="460" height="55" as="geometry" />
+    <!-- RAG internal edges -->
+    <mxCell id="er1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" edge="1" source="rag_agent" target="rag_embed" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" edge="1" source="rag_embed" target="rag_search" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er3" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" edge="1" source="rag_search" target="rag_threshold" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- threshold pass → reranker -->
+    <mxCell id="er4a" value="pass" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;fontSize=9;" edge="1" source="rag_threshold" target="rag_rerank" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- threshold fallback → rag_context (bypass reranker) -->
+    <mxCell id="er4b" value="fallback: top-10" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#b85450;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=8;fontColor=#b85450;" edge="1" source="rag_threshold" target="rag_context" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="10" y="536" />
+          <mxPoint x="10" y="646" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="er5" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" edge="1" source="rag_rerank" target="rag_context" parent="1">
+      <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <mxCell id="sql_gen" value="SQL Generation (LLM)&lt;br&gt;RAG context injected for hybrid; sqlglot AST validation" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="620" y="675" width="460" height="55" as="geometry" />
+    <!-- ═══════════════════════════════
+         SQL PATH — expanded internals
+    ═══════════════════════════════ -->
+
+    <mxCell id="sql_agent" value="&lt;b&gt;SQL Agent&lt;/b&gt;" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#6c8ebf;fontColor=#ffffff;strokeColor=#4a6ea8;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="246" y="367" width="246" height="38" as="geometry" />
     </mxCell>
 
-    <mxCell id="sql_exec" value="SQL Execution (MCP → PostgreSQL)&lt;br&gt;sql_result: list[dict] returned" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="620" y="775" width="460" height="55" as="geometry" />
+    <mxCell id="sql_schema" value="get_schema_snapshot (MCP)&lt;br&gt;FK snapshot · banned_columns filter" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="246" y="416" width="246" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="retry_logic" value="SQL error? retry_count &lt; 3?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="650" y="870" width="400" height="90" as="geometry" />
+    <mxCell id="sql_gen" value="③ LLM: SQL generation&lt;br&gt;RAG context injected for hybrid intent" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="246" y="462" width="246" height="36" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_3" value="③ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="450" y="459" width="42" height="20" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         CHART PATH NODES
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="chart_agent" value="&lt;b&gt;Chart Agent&lt;/b&gt;&lt;br&gt;Select chart type + build Plotly figure from sql_result" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#82b366;fontColor=#ffffff;strokeColor=#6a9a52;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1255" y="470" width="370" height="60" as="geometry" />
+    <mxCell id="sql_validate" value="sqlglot AST validation&lt;br&gt;security blocklist (tables · columns · keywords)" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="246" y="508" width="246" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="chart_type" value="Chart type selection (LLM)&lt;br&gt;bar | line | pie | scatter | heatmap | ..." style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1255" y="580" width="370" height="55" as="geometry" />
+    <mxCell id="sql_exec" value="MCP run_sql_query → PostgreSQL&lt;br&gt;sql_result: list[dict] written to AgentState" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="246" y="554" width="246" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="plotly_spec" value="chart_spec: Plotly figure JSON&lt;br&gt;Rendered in Streamlit via st.plotly_chart()" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1255" y="685" width="370" height="65" as="geometry" />
+    <mxCell id="retry_logic" value="SQL error?&lt;br&gt;retry_count &lt; 3?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="256" y="600" width="226" height="72" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_4" value="④ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="440" y="597" width="42" height="20" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         RESPONSE AGENT + OUTPUT
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="response_agent" value="&lt;b&gt;Response Agent&lt;/b&gt;&lt;br&gt;Synthesise final_answer from: sql_result + rag_context + chart_spec + error" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="590" y="1100" width="520" height="75" as="geometry" />
+    <!-- SQL internal edges -->
+    <mxCell id="es1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="sql_agent" target="sql_schema" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="es2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="sql_schema" target="sql_gen" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="es3" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="sql_gen" target="sql_validate" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="es4" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="sql_validate" target="sql_exec" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="es5" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="sql_exec" target="retry_logic" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- Retry loop: exit left, back up to sql_gen left -->
+    <mxCell id="es_retry" value="Yes: ④ LLM retry&lt;br&gt;with error context" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#b85450;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=8;fontColor=#b85450;" edge="1" source="retry_logic" target="sql_gen" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="228" y="636" />
+          <mxPoint x="228" y="480" />
+        </Array>
+      </mxGeometry>
     </mxCell>
 
-    <mxCell id="return_box" value="Return final_answer + chart to Frontend" style="shape=mxgraph.flowchart.terminator;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="700" y="1230" width="300" height="45" as="geometry" />
+    <!-- ═══════════════════════════════
+         CHART PATH — expanded internals
+    ═══════════════════════════════ -->
+
+    <mxCell id="chart_agent" value="&lt;b&gt;Chart Agent&lt;/b&gt;" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#82b366;fontColor=#ffffff;strokeColor=#6a9a52;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="522" y="622" width="200" height="38" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         EXTERNAL SYSTEMS
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="claude_llm" value="&lt;b&gt;meta-llama/llama-4-scout-17b&lt;/b&gt;&lt;br&gt;(Groq API / Ollama fallback)" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1640" y="210" width="160" height="65" as="geometry" />
+    <mxCell id="chart_llm" value="⑤ LLM: chart type + axis selection&lt;br&gt;bar | line | scatter | waterfall | treemap..." style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="522" y="670" width="200" height="38" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_5" value="⑤ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="680" y="667" width="42" height="20" as="geometry" />
     </mxCell>
 
-    <mxCell id="chromadb_icon" value="&lt;b&gt;pgvector&lt;/b&gt;&lt;br&gt;(PostgreSQL)" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1650" y="545" width="130" height="90" as="geometry" />
+    <mxCell id="chart_build" value="Build Plotly figure&lt;br&gt;apply layout, labels, colour scheme" style="shape=mxgraph.flowchart.process;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="522" y="718" width="200" height="36" as="geometry" />
     </mxCell>
 
-    <mxCell id="sql_db_icon" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;(MCP Server)" style="shape=mxgraph.flowchart.database;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1650" y="765" width="130" height="90" as="geometry" />
+    <mxCell id="chart_spec" value="chart_spec: Plotly JSON → AgentState&lt;br&gt;Rendered via st.plotly_chart()" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="522" y="764" width="200" height="46" as="geometry" />
     </mxCell>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         EDGES — MAIN FLOW
-    ═══════════════════════════════════════════════════════════ -->
+    <!-- Chart internal edges -->
+    <mxCell id="ec1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="chart_agent" target="chart_llm" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="ec2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="chart_llm" target="chart_build" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="ec3" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="chart_build" target="chart_spec" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
 
+    <!-- ═══════════════════════════════
+         RESPONSE AGENT — expanded internals
+    ═══════════════════════════════ -->
+
+    <mxCell id="response_header" value="&lt;b&gt;Response Agent&lt;/b&gt;" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="172" y="848" width="400" height="36" as="geometry" />
+    </mxCell>
+
+    <mxCell id="resp_small" value="⑥ LLM — ≤ 12 rows&lt;br&gt;Interpret trend / pattern / outlier&lt;br&gt;(only column names passed — no raw data)" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="172" y="895" width="120" height="58" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_6" value="⑥ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="250" y="892" width="42" height="20" as="geometry" />
+    </mxCell>
+
+    <mxCell id="resp_large" value="⑦ LLM — &gt; 12 rows&lt;br&gt;Python pre-computes key_facts&lt;br&gt;LLM uses only those exact numbers" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="312" y="895" width="120" height="58" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_7" value="⑦ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="390" y="892" width="42" height="20" as="geometry" />
+    </mxCell>
+
+    <mxCell id="resp_rag" value="⑧ LLM — RAG only&lt;br&gt;Answer from document context&lt;br&gt;No SQL result available" style="shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="452" y="895" width="120" height="58" as="geometry" />
+    </mxCell>
+    <mxCell id="badge_8" value="⑧ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="530" y="892" width="42" height="20" as="geometry" />
+    </mxCell>
+
+    <mxCell id="final_answer" value="final_answer written to AgentState" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="247" y="968" width="300" height="36" as="geometry" />
+    </mxCell>
+
+    <!-- Response internal edges -->
+    <mxCell id="er_h1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="response_header" target="resp_small" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er_h2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="response_header" target="resp_large" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er_h3" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="response_header" target="resp_rag" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er_f1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="resp_small" target="final_answer" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er_f2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="resp_large" target="final_answer" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="er_f3" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="resp_rag" target="final_answer" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ═══ RETURN BOX ═══ -->
+    <mxCell id="return_box" value="Return final_answer + chart_spec to Frontend" style="shape=mxgraph.flowchart.terminator;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="247" y="1022" width="300" height="38" as="geometry" />
+    </mxCell>
+
+    <!-- TECH LEGEND -->
+    <mxCell id="legend" value="&lt;b&gt;LLM:&lt;/b&gt; Groq API · meta-llama/llama-4-scout-17b  |  &lt;b&gt;Fallback:&lt;/b&gt; Ollama · llama3.1  |  &lt;b&gt;Embeddings:&lt;/b&gt; Ollama · mxbai-embed-large  |  &lt;b&gt;Vector DB:&lt;/b&gt; pgvector HNSW cosine" style="text;html=1;strokeColor=#999999;fillColor=#f9f9f9;align=center;verticalAlign=middle;fontSize=8;rounded=1;" vertex="1" parent="1">
+      <mxGeometry x="10" y="1076" width="774" height="26" as="geometry" />
+    </mxCell>
+
+    <!-- ═══ MAIN FLOW EDGES ═══ -->
     <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="frontend" target="receive_query" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-
     <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="receive_query" target="orchestrator" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
-
     <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="orchestrator" target="route_diamond" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <mxCell id="e4" value="rag / hybrid" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#d79b00;" edge="1" source="route_diamond" target="rag_agent" parent="1">
+    <!-- route → RAG (exit left) -->
+    <mxCell id="e4" value="rag / hybrid" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;strokeColor=#d79b00;fontSize=9;" edge="1" source="route_diamond" target="rag_agent" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="700" y="380" />
-          <mxPoint x="260" y="380" />
-          <mxPoint x="260" y="470" />
+          <mxPoint x="272" y="299" />
+          <mxPoint x="116" y="299" />
+          <mxPoint x="116" y="367" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="e5" value="sql / chart" style="edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6c8ebf;" edge="1" source="route_diamond" target="sql_agent" parent="1">
+    <!-- route → SQL (exit bottom-right) -->
+    <mxCell id="e5" value="sql / chart" style="edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#6c8ebf;fontSize=9;" edge="1" source="route_diamond" target="sql_agent" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="850" y="430" />
-          <mxPoint x="850" y="470" />
+          <mxPoint x="397" y="338" />
+          <mxPoint x="397" y="352" />
+          <mxPoint x="369" y="352" />
+          <mxPoint x="369" y="367" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="er1" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rag_agent" target="semantic_search" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="er2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="semantic_search" target="rag_fallback" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="er3" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rag_fallback" target="rag_chunks" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="er4" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rag_chunks" target="rag_context" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <mxCell id="es1" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="sql_agent" target="schema_ctx" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="es2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="schema_ctx" target="sql_gen" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="es3" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="sql_gen" target="sql_exec" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="es4" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="sql_exec" target="retry_logic" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <mxCell id="es_retry_loop" value="Yes: retry" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#b85450;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="retry_logic" target="sql_gen" parent="1">
+    <!-- Hybrid: rag_context → sql_agent -->
+    <mxCell id="e_hybrid" value="hybrid: pass rag_context" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;fontSize=8;" edge="1" source="rag_context" target="sql_agent" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="1090" y="915" />
-          <mxPoint x="1150" y="915" />
-          <mxPoint x="1150" y="702" />
-          <mxPoint x="1080" y="702" />
+          <mxPoint x="214" y="646" />
+          <mxPoint x="226" y="646" />
+          <mxPoint x="226" y="386" />
+          <mxPoint x="246" y="386" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="ec1" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="chart_agent" target="chart_type" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-    <mxCell id="ec2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="chart_type" target="plotly_spec" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <mxCell id="e_hybrid" value="hybrid: pass RAG context" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;" edge="1" source="rag_context" target="sql_agent" parent="1">
+    <!-- retry → chart_agent (exit right) -->
+    <mxCell id="e_to_chart" value="chart / hybrid" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeColor=#82b366;fontSize=9;" edge="1" source="retry_logic" target="chart_agent" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="445" y="907" />
-          <mxPoint x="530" y="907" />
-          <mxPoint x="530" y="500" />
-          <mxPoint x="620" y="500" />
+          <mxPoint x="482" y="636" />
+          <mxPoint x="502" y="636" />
+          <mxPoint x="502" y="641" />
+          <mxPoint x="522" y="641" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="e_to_chart" value="No error: chart / hybrid" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;" edge="1" source="retry_logic" target="chart_agent" parent="1">
+    <!-- Convergence to response_header -->
+    <mxCell id="e_resp_rag" value="rag" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;fontSize=9;" edge="1" source="rag_context" target="response_header" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="1090" y="915" />
-          <mxPoint x="1190" y="915" />
-          <mxPoint x="1190" y="500" />
-          <mxPoint x="1255" y="500" />
+          <mxPoint x="116" y="670" />
+          <mxPoint x="116" y="866" />
+          <mxPoint x="172" y="866" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="e_resp_rag" value="rag" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" edge="1" source="rag_context" target="response_agent" parent="1">
+    <mxCell id="e_resp_sql" value="sql" style="edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#6c8ebf;fontSize=9;" edge="1" source="retry_logic" target="response_header" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="260" y="970" />
-          <mxPoint x="260" y="1137" />
-          <mxPoint x="590" y="1137" />
+          <mxPoint x="369" y="672" />
+          <mxPoint x="369" y="848" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="e_resp_sql" value="No error: sql" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="retry_logic" target="response_agent" parent="1">
+    <mxCell id="e_resp_chart" value="chart" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;fontSize=9;" edge="1" source="chart_spec" target="response_header" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="850" y="960" />
-          <mxPoint x="850" y="1100" />
+          <mxPoint x="622" y="810" />
+          <mxPoint x="622" y="866" />
+          <mxPoint x="572" y="866" />
         </Array>
       </mxGeometry>
     </mxCell>
 
-    <mxCell id="e_resp_chart" value="chart" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="plotly_spec" target="response_agent" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1440" y="717" />
-          <mxPoint x="1440" y="1137" />
-          <mxPoint x="1110" y="1137" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <mxCell id="e_ret" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="response_agent" target="return_box" parent="1">
+    <mxCell id="e_ret" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="final_answer" target="return_box" parent="1">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <mxCell id="e_loop" value="Return answer + chart" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6c8ebf;" edge="1" source="return_box" target="frontend" parent="1">
+    <!-- Return loop to frontend (right side) -->
+    <mxCell id="e_loop" value="Return answer + chart" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6c8ebf;fontSize=9;" edge="1" source="return_box" target="frontend" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="1580" y="1252" />
-          <mxPoint x="1580" y="55" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <mxCell id="e_llm_orch" value="LLM calls" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" source="claude_llm" target="orchestrator" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1590" y="242" />
-          <mxPoint x="1110" y="242" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <mxCell id="e_pgvec" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;" edge="1" source="chromadb_icon" target="semantic_search" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1650" y="590" />
-          <mxPoint x="500" y="590" />
-          <mxPoint x="500" y="602" />
-          <mxPoint x="445" y="602" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <mxCell id="e_psql" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#6c8ebf;" edge="1" source="sql_db_icon" target="sql_exec" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1650" y="810" />
-          <mxPoint x="1100" y="810" />
-          <mxPoint x="1100" y="802" />
-          <mxPoint x="1080" y="802" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- ═══════════════════════════════════════════════════════════
-         LLM CALL BADGES — small numbered ovals overlaid on each
-         node where invoke_with_retry() is called
-    ═══════════════════════════════════════════════════════════ -->
-
-    <!-- Badge ① on orchestrator (top-right corner) -->
-    <mxCell id="badge_1" value="① LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1068" y="204" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Badge ② on rag_agent (LLM reranker called inside) -->
-    <mxCell id="badge_2" value="② LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="403" y="464" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Badge ③ on sql_gen (initial SQL generation) -->
-    <mxCell id="badge_3" value="③ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1038" y="669" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Badge ④ on retry_logic (retry SQL call) -->
-    <mxCell id="badge_4" value="④ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1008" y="864" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Badge ⑤ on chart_type (chart selection LLM call) -->
-    <mxCell id="badge_5" value="⑤ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1583" y="574" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Badges ⑥⑦⑧ on response_agent (three distinct LLM call paths) -->
-    <mxCell id="badge_6" value="⑥ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="985" y="1094" width="42" height="20" as="geometry" />
-    </mxCell>
-    <mxCell id="badge_7" value="⑦ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1030" y="1094" width="42" height="20" as="geometry" />
-    </mxCell>
-    <mxCell id="badge_8" value="⑧ LLM" style="ellipse;whiteSpace=wrap;html=1;fillColor=#9673A6;strokeColor=#6a4a7a;fontColor=#ffffff;fontSize=8;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1075" y="1094" width="42" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- ═══════════════════════════════════════════════════════════
-         DIVIDER + PROMPT REFERENCE COLUMN HEADER
-    ═══════════════════════════════════════════════════════════ -->
-
-    <mxCell id="divider" value="" style="endArrow=none;dashed=1;strokeColor=#9673A6;strokeWidth=2;" edge="1" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <mxPoint x="1820" y="10" as="sourcePoint" />
-        <mxPoint x="1820" y="1290" as="targetPoint" />
-      </mxGeometry>
-    </mxCell>
-
-    <mxCell id="col_header" value="LLM API Calls — System Prompt Reference" style="text;html=1;strokeColor=none;fillColor=#E1D5E7;align=center;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=12;rounded=1;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="10" width="490" height="32" as="geometry" />
-    </mxCell>
-
-    <!-- ═══════════════════════════════════════════════════════════
-         PROMPT ANNOTATION BOXES (ISO 5807 annotation shape)
-         Each box shows the system prompt snippet and human message
-         pattern for that LLM call point.
-    ═══════════════════════════════════════════════════════════ -->
-
-    <!-- ① Orchestrator -->
-    <mxCell id="ann_1" value="&lt;b&gt;① Orchestrator — intent classification&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;You are the Orchestrator of a multi-agent BI assistant. Classify intent: rag | sql | chart | hybrid. Return JSON {intent, plan}.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; {user_query}" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="50" width="490" height="95" as="geometry" />
-    </mxCell>
-
-    <!-- ② RAG Reranker -->
-    <mxCell id="ann_2" value="&lt;b&gt;② RAG Agent — LLM reranker (chunk relevance filter)&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;You are a relevance filter. Select ONLY genuinely relevant chunks. Return a JSON array of indices: [0, 2, 5]. Return ONLY the array.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Question: {user_query}\n\nChunks:\n[Chunk N] (score: X, source: Y)\n{content}...&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="158" width="490" height="105" as="geometry" />
-    </mxCell>
-
-    <!-- ③ SQL Agent — initial generation -->
-    <mxCell id="ann_3" value="&lt;b&gt;③ SQL Agent — initial SQL generation&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;You are a SQL specialist for PostgreSQL. Write a single correct SQL query using ONLY columns listed in the schema. Return ONLY the raw SQL.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Schema: {schema}\nPlan: {plan}\n[date_hint]\n[RAG context if hybrid]\nQuestion: {user_query}&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="276" width="490" height="105" as="geometry" />
-    </mxCell>
-
-    <!-- ④ SQL Agent — retry -->
-    <mxCell id="ann_4" value="&lt;b&gt;④ SQL Agent — retry SQL (on error, up to 3 times)&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; [same SQL system prompt as ③]&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Previous SQL failed: {error_info}. Extra context from KB: {extra_context}. Schema: {schema}. Original question: {user_query}. Write a corrected PostgreSQL SQL query.&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="394" width="490" height="105" as="geometry" />
-    </mxCell>
-
-    <!-- ⑤ Chart Agent -->
-    <mxCell id="ann_5" value="&lt;b&gt;⑤ Chart Agent — chart type &amp;amp; axis selection&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;You are a Chart specialist for business analytics. Return 1–4 chart configs ranked by fit as a JSON array. Available types: bar, line, pie, scatter, heatmap, waterfall, treemap...&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Data sample (first 5 rows): {json}\nAll columns: {cols}\nUser question: {user_query}&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="512" width="490" height="110" as="geometry" />
-    </mxCell>
-
-    <!-- ⑥ Response Agent — interpretation (≤12 rows) -->
-    <mxCell id="ann_6" value="&lt;b&gt;⑥ Response Agent — business interpretation (result ≤ 12 rows)&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;BI assistant providing executive-level insight. Add business VALUE — do NOT restate numbers. Write 2–4 sentences identifying the most notable trend, pattern, or outlier.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Question: {user_query}\nThe query returned N row(s).\nColumns: {col_names}. [+ RAG context &amp;amp; chart note if present]&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="635" width="490" height="115" as="geometry" />
-    </mxCell>
-
-    <!-- ⑦ Response Agent — grounded insight (>12 rows) -->
-    <mxCell id="ann_7" value="&lt;b&gt;⑦ Response Agent — grounded insight (result &amp;gt; 12 rows)&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;BI assistant. Every number you write MUST appear verbatim in the Computed Facts provided. Write 1–3 sentences of insight. Do NOT round or approximate.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Question: {user_query}\nComputed Facts (use ONLY these numbers): {key_facts}\n[+ RAG context &amp;amp; chart note if present]&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="763" width="490" height="115" as="geometry" />
-    </mxCell>
-
-    <!-- ⑧ Response Agent — RAG-only answer -->
-    <mxCell id="ann_8" value="&lt;b&gt;⑧ Response Agent — RAG-only answer (no SQL result)&lt;/b&gt;&lt;br&gt;&lt;i&gt;Sys:&lt;/i&gt; &quot;BI assistant. Answer the user&apos;s question using ONLY the provided document context. Do NOT invent numbers or facts. If context is insufficient, say so clearly.&quot;&lt;br&gt;&lt;i&gt;Human:&lt;/i&gt; &quot;Question: {user_query}\n\nContext:\n{chunk_text}&quot;" style="shape=mxgraph.flowchart.annotation;whiteSpace=wrap;html=1;fillColor=#F8F0FF;strokeColor=#9673A6;fontSize=9;align=left;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="1840" y="891" width="490" height="105" as="geometry" />
-    </mxCell>
-
-    <!-- ═══════════════════════════════════════════════════════════
-         DASHED REFERENCE LINES — connect badges to annotation boxes
-    ═══════════════════════════════════════════════════════════ -->
-
-    <!-- Badge ① → Ann ① -->
-    <mxCell id="ref_1" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_1" target="ann_1" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Badge ② → Ann ② -->
-    <mxCell id="ref_2" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_2" target="ann_2" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1800" y="474" />
-          <mxPoint x="1800" y="210" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ③ → Ann ③ -->
-    <mxCell id="ref_3" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_3" target="ann_3" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1800" y="679" />
-          <mxPoint x="1800" y="328" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ④ → Ann ④ -->
-    <mxCell id="ref_4" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_4" target="ann_4" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1800" y="874" />
-          <mxPoint x="1800" y="446" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ⑤ → Ann ⑤ -->
-    <mxCell id="ref_5" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_5" target="ann_5" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1800" y="584" />
-          <mxPoint x="1800" y="567" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ⑥ → Ann ⑥ -->
-    <mxCell id="ref_6" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_6" target="ann_6" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1800" y="1104" />
-          <mxPoint x="1800" y="692" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ⑦ → Ann ⑦ -->
-    <mxCell id="ref_7" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_7" target="ann_7" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1810" y="1104" />
-          <mxPoint x="1810" y="820" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- Badge ⑧ → Ann ⑧ -->
-    <mxCell id="ref_8" value="" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#9673A6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;" edge="1" source="badge_8" target="ann_8" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="1820" y="1104" />
-          <mxPoint x="1820" y="943" />
+          <mxPoint x="762" y="1041" />
+          <mxPoint x="762" y="70" />
         </Array>
       </mxGeometry>
     </mxCell>
