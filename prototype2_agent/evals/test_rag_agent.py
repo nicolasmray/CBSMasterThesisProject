@@ -17,7 +17,7 @@ from datasets import RAG_RETRIEVAL_CASES
 
 def _search(query: str) -> list[dict]:
     """Run semantic_search directly (no MCP)."""
-    from mcp_server.tools.rag_tools import semantic_search
+    from db.vector_store import semantic_search
     return semantic_search(query)
 
 
@@ -186,7 +186,7 @@ def test_fallback_activates_when_threshold_fails():
     )
 
     # Fallback search should find chunks
-    from mcp_server.tools.rag_tools import semantic_search_no_threshold
+    from db.vector_store import semantic_search_no_threshold
     fallback = semantic_search_no_threshold("What fields are considered high sensitivity PII?", top_k=10)
 
     assert len(fallback) > 0, "Fallback search also returned 0 chunks"

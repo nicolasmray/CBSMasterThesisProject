@@ -43,7 +43,7 @@ def test_schema_load_latency(timer):
 @pytest.mark.integration
 def test_semantic_search_latency(timer):
     """Semantic search must complete within threshold."""
-    from mcp_server.tools.rag_tools import semantic_search
+    from db.vector_store import semantic_search
 
     with timer() as t:
         results = semantic_search("revenue calculation")

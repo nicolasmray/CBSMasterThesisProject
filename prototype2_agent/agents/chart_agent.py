@@ -132,7 +132,7 @@ Chart formatting standards (always follow these):
 - Y-axis: always starts at 0; the upper bound is computed automatically from the data.
 - Tooltips: configure hover tooltips to show the category name and exact value on mouse-over
 
-Respond with ONLY a JSON array of 1–4 objects (no markdown fences).
+Respond with ONLY a JSON array of 1–3 objects (no markdown fences).
 IMPORTANT: all chart_type values must be DIFFERENT — no duplicates.
 - "group": required for grouped_bar, stacked_bar, normalized_bar; set to "" for all other types.
 - "facet": required for small_multiples; set to "" for all other types.
@@ -782,7 +782,7 @@ def chart_agent(state: AgentState) -> AgentState:
     actual_cols = list(sql_result[0].keys())
 
     _CAT_LIMIT = 10
-    for spec in specs[:4]:
+    for spec in specs[:3]:
         chart_type = spec.get("chart_type", "bar")
         if chart_type in seen_types:
             continue

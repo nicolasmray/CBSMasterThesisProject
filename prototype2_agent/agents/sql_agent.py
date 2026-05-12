@@ -18,6 +18,7 @@ from mcp_client import get_server_params, call_tool
 from llm_config import invoke_with_retry
 from db.schema_snapshot import get_compact_schema, check_date_in_range, get_db_date_range, invalidate_compact_schema_cache, column_exists_anywhere
 from db.banned_columns import get_banned_columns_prompt, record_banned_column
+from db.vector_store import semantic_search
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SQL_SYSTEM_PROMPT = """\
@@ -28,6 +29,8 @@ You will be given:
     schema.table: col1(type1), col2(type2), ...
 - The user's question.
 - Optionally, extra documentation context from a knowledge base.
+
+Output: Return ONLY the raw SQL query — no markdown fences, no explanation.
 
 ⚠️  CRITICAL — READ BEFORE WRITING ANY SQL:
 Never reference a column that is not explicitly listed in the schema snapshot.
@@ -43,20 +46,16 @@ unitpricediscount is already a fraction (0.00–1.00). To get average discount a
     ROUND(CAST(AVG(sod.unitpricediscount) * 100 AS numeric), 2)
 Never derive the discount by dividing revenue — use the column directly.
 
-IMPORTANT: For extracting year and month, ALWAYS use:
-     EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
-Never use (EXTRACT(YEAR FROM ...) AS INT) or CAST(EXTRACT(YEAR FROM ...) AS INT) — only the ::int form is valid.
-
-IMPORTANT: For rounding, ALWAYS use:
-     ROUND(CAST(expr AS numeric), 2)
-Never use ROUND(expr, 2), ROUND(CAST(expr AS float), 2), or ROUND((expr)::numeric, 2).
-
 Your job:
+
+── Schema & table basics ────────────────────────────────────────────────────
 1. Write a single, correct PostgreSQL SQL query that answers the user's question.
 2. Use ONLY tables and columns that appear in the schema snapshot. NEVER invent or guess
    column names — if a column is not listed in the schema, do not use it.
 3. Tables are listed as "schema.table" (e.g. "production.product", "sales.salesorderdetail").
    You MUST use fully-qualified names (schema.table) in your SQL.
+
+── JOINs ────────────────────────────────────────────────────────────────────
 4. Infer JOIN conditions by matching ID columns across tables:
    - Columns like "personid", "storeid", "employeeid" often reference the primary key
      ("businessentityid") of their corresponding table (person.person, sales.store,
@@ -64,14 +63,43 @@ Your job:
      primary key for people, stores, vendors, and employees.
    - Example: sales.customer.personid → person.person.businessentityid
    - Example: purchasing.purchaseorderheader.employeeid → humanresources.employee.businessentityid
-6. Whenever a query groups or breaks down by any entity, always JOIN to get the
+5. Whenever a query groups or breaks down by any entity, always JOIN to get the
    human-readable name and use it instead of the raw ID — even if the user did not
    explicitly ask for "names". Never return bare numeric IDs as dimension labels.
    For customer names, join through person.person to get firstname and lastname.
-7. For time-series queries, always use EXTRACT to return date parts as separate integer columns
+14. JOIN column selection — always use the most specific foreign key available, not the
+    most common one. When a table has a named FK column (e.g. salespersonid, storeid,
+    customerid, vendorid) pointing to another table, use that named column for the JOIN.
+    Only fall back to businessentityid when no named FK exists for the relationship.
+    CORRECT:   JOIN sales.salesperson sp ON s.salespersonid = sp.businessentityid
+    INCORRECT: JOIN sales.salesperson sp ON s.businessentityid = sp.businessentityid
+    To find the right FK: look at the column names on the source table in the schema.
+    A column like "salespersonid" on sales.store is the FK to sales.salesperson.
+    A column like "customerid" on sales.salesorderheader is the FK to sales.customer.
+    Never assume two tables join on businessentityid unless neither table has a more
+    specific named FK for that relationship.
+15. Geographic joins — when the user asks to break down by province, state, region, or address:
+    Always prefer the shortest join path. If the order/transaction table already contains a
+    direct foreign key to an address or location table, join through that key directly.
+    Do NOT route through intermediate person or customer entity tables to reach an address —
+    this creates unnecessary joins and alias conflicts that break the query.
+16. Avoid implicit row filtering through joins — every JOIN you add that is not strictly
+    needed for a selected column silently excludes rows where that FK is NULL.
+    In particular:
+    - Never join sales.salesperson just to reach sales.salesterritory.
+      sales.salesorderheader already has a direct territoryid column — use that.
+    - Never join sales.customer or person.person just to reach a territory or address
+      when the order/transaction table has a direct FK.
+    - If a dimension column (e.g. territoryid, storeid) exists directly on the fact table,
+      join from there — do not route through intermediate entity tables.
+    Wrong:  soh → salesperson → salesterritory   (excludes online orders with NULL salespersonid)
+    Right:  soh → salesterritory via soh.territoryid
+
+── Time handling ────────────────────────────────────────────────────────────
+6. For time-series queries, always use EXTRACT to return date parts as separate integer columns
    (e.g. year, month) and ORDER BY them ASC. Never use TO_CHAR or combined date strings.
    Example: EXTRACT(YEAR FROM orderdate)::int AS year, EXTRACT(MONTH FROM orderdate)::int AS month
-8. For relative time ranges ("last N months", "past N days", "previous N years"):
+7. For relative time ranges ("last N months", "past N days", "previous N years"):
    - NEVER use CURRENT_DATE or NOW() — the database may contain historical data and
      anchoring to today will return zero rows.
    - Anchor to the latest date in the relevant table using a subquery:
@@ -83,32 +111,9 @@ Your job:
      INTERVAL '1 year', INTERVAL '30 days'. Never write INTERVAL '12' MONTHS (invalid in PostgreSQL).
      The ONLY valid form is: INTERVAL '<number> <unit>' where both number and unit are inside the quotes.
    - Always include BOTH a lower bound AND an upper bound in the WHERE clause.
-9. When the user asks to group or break down by a dimension (e.g. "by category", "by region",
-   "by product"), always include that column in both SELECT and GROUP BY — never drop it.
-   When the user provides a list of specific IDs or named entities and asks for analysis,
-   comparison, or distribution across them, always include that entity's identifier (or name)
-   in both SELECT and GROUP BY so results are broken down per entity — never collapse them
-   into a single aggregate. Example: "for these customers [IDs] analyse revenue" →
-   include customerid in SELECT and GROUP BY.
-10. When the user says "by category" without further specification, prefer the product
-    classification hierarchy (e.g. productcategory.name, productsubcategory.name) over
-    promotional or offer descriptions (e.g. specialoffer.description). Only use offer/promotion
-    tables if the user explicitly asks for offers, discounts, or promotions.
-11. If the question contains a time filter ("last N months", "this year", etc.), you MUST include
+10. If the question contains a time filter ("last N months", "this year", etc.), you MUST include
     a WHERE clause that implements it. Never omit a time filter mentioned in the question.
-12. Return ONLY the raw SQL query — no markdown fences, no explanation.
-13. LIMIT rule — apply exactly one of these cases:
-    a) Ranking intent — user uses "most", "top", "highest", "largest", "best",
-       "worst", "lowest", "least", "biggest", "fewest":
-       → add ORDER BY <metric> DESC/ASC and LIMIT 10 (or the number the user states).
-    b) Distribution/breakdown intent — user uses "breakdown", "split", "distribution",
-       "by region", "by category", "by product", "all", "every", "each", "show me":
-       → return ALL rows, no LIMIT. The user wants the complete picture.
-    c) All other queries with no explicit ranking or count signal:
-       → no LIMIT unless the result set would obviously be unbounded (e.g. raw fact
-         tables with millions of rows). Aggregated GROUP BY queries are fine without LIMIT.
-    Never add LIMIT to a query just because it has an ORDER BY clause.
-14. When the user asks for period-over-period change, growth, decline, or comparison
+12. When the user asks for period-over-period change, growth, decline, or comparison
     to a previous period — phrased with "growth", "change", "increase", "decrease",
     "compared to previous", "month over month", "year over year", "MoM", "YoY",
     "trend", "evolution" — you MUST compute the delta in the SQL itself using window
@@ -150,11 +155,33 @@ Your job:
       e.g. ROUND(CAST(expr AS numeric), 2). Never pass double precision directly to ROUND,
       and never use ROUND((expr)::numeric, 2) — the ::numeric form is error-prone.
     - The first period row will have NULL for prev_value and pct_change — that is correct.
-15. ROUND always requires a numeric cast — PostgreSQL does not have ROUND(double precision, integer).
-    Always write: ROUND(CAST(expr AS numeric), 2)
-    Never write:  ROUND(expr, 2), ROUND(CAST(expr AS float), 2), or ROUND((expr)::numeric, 2)
-    This applies everywhere: margins, ratios, averages, growth rates — any ROUND call.
-16. Column references in SELECT/WHERE/GROUP BY/ORDER BY must ALWAYS use the form
+
+── Grouping & aggregation ───────────────────────────────────────────────────
+8. When the user asks to group or break down by a dimension (e.g. "by category", "by region",
+   "by product"), always include that column in both SELECT and GROUP BY — never drop it.
+   When the user provides a list of specific IDs or named entities and asks for analysis,
+   comparison, or distribution across them, always include that entity's identifier (or name)
+   in both SELECT and GROUP BY so results are broken down per entity — never collapse them
+   into a single aggregate. Example: "for these customers [IDs] analyse revenue" →
+   include customerid in SELECT and GROUP BY.
+9. When the user says "by category" without further specification, prefer the product
+   classification hierarchy (e.g. productcategory.name, productsubcategory.name) over
+   promotional or offer descriptions (e.g. specialoffer.description). Only use offer/promotion
+   tables if the user explicitly asks for offers, discounts, or promotions.
+11. LIMIT rule — apply exactly one of these cases:
+    a) Ranking intent — user uses "most", "top", "highest", "largest", "best",
+       "worst", "lowest", "least", "biggest", "fewest":
+       → add ORDER BY <metric> DESC/ASC and LIMIT 10 (or the number the user states).
+    b) Distribution/breakdown intent — user uses "breakdown", "split", "distribution",
+       "by region", "by category", "by product", "all", "every", "each", "show me":
+       → return ALL rows, no LIMIT. The user wants the complete picture.
+    c) All other queries with no explicit ranking or count signal:
+       → no LIMIT unless the result set would obviously be unbounded (e.g. raw fact
+         tables with millions of rows). Aggregated GROUP BY queries are fine without LIMIT.
+    Never add LIMIT to a query just because it has an ORDER BY clause.
+
+── SQL syntax ───────────────────────────────────────────────────────────────
+13. Column references in SELECT/WHERE/GROUP BY/ORDER BY must ALWAYS use the form
     alias.column — never schema.table.column. Only FROM and JOIN clauses use the
     fully-qualified schema.table form.
     CORRECT:   SELECT s.name, COUNT(e.businessentityid) FROM sales.store s JOIN humanresources.employee e ...
@@ -167,34 +194,9 @@ Your job:
     Column references outside FROM/JOIN must have EXACTLY ONE dot: alias.column.
     Two-dot forms like alias.x.column or schema.table.column are NEVER valid in
     SELECT, WHERE, GROUP BY, or ON clauses — use the alias alone.
-17. JOIN column selection — always use the most specific foreign key available, not the
-    most common one. When a table has a named FK column (e.g. salespersonid, storeid,
-    customerid, vendorid) pointing to another table, use that named column for the JOIN.
-    Only fall back to businessentityid when no named FK exists for the relationship.
-    CORRECT:   JOIN sales.salesperson sp ON s.salespersonid = sp.businessentityid
-    INCORRECT: JOIN sales.salesperson sp ON s.businessentityid = sp.businessentityid
-    To find the right FK: look at the column names on the source table in the schema.
-    A column like "salespersonid" on sales.store is the FK to sales.salesperson.
-    A column like "customerid" on sales.salesorderheader is the FK to sales.customer.
-    Never assume two tables join on businessentityid unless neither table has a more
-    specific named FK for that relationship.
-18. Geographic joins — when the user asks to break down by province, state, region, or address:
-    Always prefer the shortest join path. If the order/transaction table already contains a
-    direct foreign key to an address or location table, join through that key directly.
-    Do NOT route through intermediate person or customer entity tables to reach an address —
-    this creates unnecessary joins and alias conflicts that break the query.
-19. Avoid implicit row filtering through joins — every JOIN you add that is not strictly
-    needed for a selected column silently excludes rows where that FK is NULL.
-    In particular:
-    - Never join sales.salesperson just to reach sales.salesterritory.
-      sales.salesorderheader already has a direct territoryid column — use that.
-    - Never join sales.customer or person.person just to reach a territory or address
-      when the order/transaction table has a direct FK.
-    - If a dimension column (e.g. territoryid, storeid) exists directly on the fact table,
-      join from there — do not route through intermediate entity tables.
-    Wrong:  soh → salesperson → salesterritory   (excludes online orders with NULL salespersonid)
-    Right:  soh → salesterritory via soh.territoryid
-20. Date arithmetic — when computing a duration between two date/timestamp columns,
+
+── Domain formulas ──────────────────────────────────────────────────────────
+17. Date arithmetic — when computing a duration between two date/timestamp columns,
     ALWAYS emit BOTH of these columns (never just one):
         ROUND(CAST(AVG(EXTRACT(EPOCH FROM (col_end - col_start)) / 86400.0) AS numeric), 2) AS average_days,
         ROUND(CAST(AVG(EXTRACT(EPOCH FROM (col_end - col_start)) / 3600.0)  AS numeric), 1) AS average_hours
@@ -203,7 +205,7 @@ Your job:
     Do NOT use EXTRACT(EPOCH FROM ...) without dividing — epoch is seconds, not days or hours.
     Do NOT cast to ::date before subtracting — that discards time-of-day and forces integer days.
     Apply a validity filter where appropriate (e.g. shipdate IS NOT NULL, shipdate >= orderdate).
-21. Cost and standard cost — always use p.standardcost directly from production.product.
+18. Cost and standard cost — always use p.standardcost directly from production.product.
     Do NOT join history or audit tables (e.g. productcosthistory, pricehistory) to retrieve
     the "current" cost — these tables have one row per change event and will cause silent
     row duplication or row loss when inner-joined to a fact table.
@@ -372,7 +374,7 @@ async def _retry_sql(
 
     Returns the cleaned SQL string from the LLM response.
     """
-    extra = await call_tool(session, "semantic_search", {"query": search_query, "top_k": 3})
+    extra = semantic_search(search_query, top_k=3)
     extra_ctx = "\n".join(str(c) for c in extra) if extra else "None."
     retry_msg = SQL_RETRY_PROMPT.format(
         error_info=error_info,

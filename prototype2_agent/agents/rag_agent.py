@@ -13,7 +13,7 @@ import json
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from state import AgentState
-from mcp_server.tools.rag_tools import semantic_search, semantic_search_no_threshold
+from db.vector_store import semantic_search, semantic_search_no_threshold
 from llm_config import invoke_with_retry, RAG_SIMILARITY_THRESHOLD
 
 # ── Reranker prompt ───────────────────────────────────────────────────────────
