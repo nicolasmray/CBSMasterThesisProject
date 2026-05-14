@@ -24,7 +24,7 @@ CHART_SYSTEM_PROMPT = """\
 You are a Chart specialist agent for business analytics. You receive SQL query results
 and the user's original question.
 
-Your job: return 1–4 chart configurations ranked by how well they fit the data and the question.
+Your job: return 1–3 chart configurations ranked by how well they fit the data and the question.
 Return only chart types that are genuinely useful for this specific dataset — do not pad to a fixed count.
 A single highly-relevant chart is better than three where the last one is a poor fit.
 

@@ -7,16 +7,19 @@ back to semantic_search for extra context on failure.
 
 import asyncio
 import concurrent.futures
+import re
 
 import sqlglot
 from langchain_core.messages import SystemMessage, HumanMessage
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+from sqlalchemy import text
 
 from state import AgentState
 from mcp_client import get_server_params, call_tool
 from llm_config import invoke_with_retry
-from db.schema_snapshot import get_compact_schema, check_date_in_range, get_db_date_range, invalidate_compact_schema_cache, column_exists_anywhere
+from db.connection import get_engine
+from db.schema_snapshot import get_compact_schema, invalidate_compact_schema_cache
 from db.banned_columns import get_banned_columns_prompt, record_banned_column
 from db.vector_store import semantic_search
 
@@ -238,6 +241,82 @@ Write a corrected PostgreSQL SQL query. Return ONLY the raw SQL.
 """
 
 
+# ── Database date range (cached) ─────────────────────────────────────────────
+_date_range_cache: dict | None = None
+
+
+def get_db_date_range() -> dict:
+    """Query and cache the min/max dates from key business tables."""
+    global _date_range_cache
+    if _date_range_cache is not None:
+        return _date_range_cache
+
+    date_queries = [
+        ("sales.salesorderheader", "orderdate"),
+        ("purchasing.purchaseorderheader", "orderdate"),
+        ("production.workorder", "startdate"),
+        ("production.transactionhistory", "transactiondate"),
+    ]
+
+    tables = {}
+    global_min = None
+    global_max = None
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        for table, col in date_queries:
+            try:
+                row = conn.execute(text(
+                    f"SELECT MIN({col}), MAX({col}) FROM {table}"
+                )).fetchone()
+                if row and row[0] and row[1]:
+                    tables[table] = {
+                        "column": col,
+                        "min_date": str(row[0]),
+                        "max_date": str(row[1]),
+                    }
+                    if global_min is None or row[0] < global_min:
+                        global_min = row[0]
+                    if global_max is None or row[1] > global_max:
+                        global_max = row[1]
+            except Exception:
+                continue
+
+    _date_range_cache = {
+        "min_year": global_min.year if global_min else None,
+        "max_year": global_max.year if global_max else None,
+        "min_date": str(global_min) if global_min else None,
+        "max_date": str(global_max) if global_max else None,
+        "tables": tables,
+    }
+    return _date_range_cache
+
+
+def check_date_in_range(user_query: str) -> str | None:
+    """Return a warning string if the query mentions a year outside the DB range, else None."""
+    date_range = get_db_date_range()
+    min_year = date_range.get("min_year")
+    max_year = date_range.get("max_year")
+
+    if not min_year or not max_year:
+        return None
+
+    years_mentioned = [int(y) for y in re.findall(r"\b(19\d{2}|20\d{2})\b", user_query)]
+    if not years_mentioned:
+        return None
+
+    out_of_range = [y for y in years_mentioned if y < min_year or y > max_year]
+    if out_of_range:
+        return (
+            f"The year(s) {', '.join(str(y) for y in out_of_range)} appear to be outside "
+            f"the database date range ({min_year}–{max_year}). "
+            f"The database contains data from {date_range['min_date'][:10]} "
+            f"to {date_range['max_date'][:10]}. "
+            f"Please adjust your query to use a year within this range."
+        )
+    return None
+
+
 def _clean_sql(raw: str) -> str:
     """Strip markdown fences and leading 'sql' prefix from an LLM SQL response."""
     sql = raw.strip().strip("`").strip()
@@ -255,7 +334,6 @@ def _fix_round_casts(sql: str) -> str:
     CAST(... AS <float-type>) anywhere in the SQL with (...)::numeric, which coerces
     the whole expression to numeric before ROUND sees it.
     """
-    import re
     # Replace CAST(expr AS DOUBLE PRECISION/FLOAT/REAL) → (expr)::numeric everywhere
     pattern = re.compile(
         r'CAST\s*\(\s*(.*?)\s*AS\s*(?:DOUBLE\s+PRECISION|FLOAT(?:4|8)?|REAL)\s*\)',
