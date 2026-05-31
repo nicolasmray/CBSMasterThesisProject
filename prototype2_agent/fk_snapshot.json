@@ -114,7 +114,7 @@
     "creditcardid": "sales.creditcard.creditcardid"
   },
   "sales.salesorderdetail": {
-    "productid": "sales.specialofferproduct.productid",
+    "productid": "sales.specialofferproduct.specialofferid",
     "salesorderid": "sales.salesorderheader.salesorderid",
     "specialofferid": "sales.specialofferproduct.productid"
   },

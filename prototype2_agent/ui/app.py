@@ -177,6 +177,49 @@ body { overflow-x: auto; overflow-y: hidden; margin: 0; }
                 st.plotly_chart(fig, width="stretch")
 
 
+# ── Example questions ──────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+div[data-testid="stButton"] > button {
+    background-color: #1e2530;
+    border: 1px solid #3a4558;
+    border-radius: 10px;
+    color: #8899b0;
+    font-size: 0.875rem;
+    font-weight: 400;
+    padding: 10px 16px;
+    text-align: left;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+div[data-testid="stButton"] > button:hover {
+    background-color: #262f3e;
+    border-color: #4f6080;
+    color: #b0bfd4;
+}
+div[data-testid="stButton"] > button:active {
+    background-color: #2d3a4d;
+}
+</style>
+""", unsafe_allow_html=True)
+
+_EXAMPLE_QUESTIONS = [
+    "How many customers are in the database?",
+    "Show me profit margin by product category.",
+    "What is the schedule of automatic reports?",
+    "Show me month-over-month revenue growth.",
+    "What is the gender distribution across departments? Plot a visualization.",
+]
+
+st.markdown(
+    "<p style='color:#718096; font-size:0.85rem; margin:4px 0 8px 0;'>"
+    "Here are some questions to get you started:</p>",
+    unsafe_allow_html=True,
+)
+for _i, _q in enumerate(_EXAMPLE_QUESTIONS):
+    if st.button(_q, key=f"example_q_{_i}", use_container_width=True):
+        st.session_state["_pending_query"] = _q
+        st.rerun()
+
 # ── Session state ──────────────────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -200,16 +243,18 @@ for msg in st.session_state.messages:
 
 # ── Chat input ─────────────────────────────────────────────────────────────────
 user_input = st.chat_input("Ask a question about your business data...")
+_pending = st.session_state.pop("_pending_query", None)
+effective_input = _pending or user_input
 
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
+if effective_input:
+    st.session_state.messages.append({"role": "user", "content": effective_input})
     with st.chat_message("user"):
-        st.markdown(user_input)
+        st.markdown(effective_input)
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                result = compiled_graph.invoke({"user_query": user_input})
+                result = compiled_graph.invoke({"user_query": effective_input})
 
                 final_answer: str = result.get(
                     "final_answer", "I wasn't able to generate an answer."
